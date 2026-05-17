@@ -335,7 +335,12 @@ export default {
         return text(SPEC_MARKDOWN, "text/markdown; charset=utf-8");
       }
 
-      if (url.pathname === "/docs/spec" || url.pathname === "/docs/spec/") {
+      if (
+        url.pathname === "/docs" ||
+        url.pathname === "/docs/" ||
+        url.pathname === "/docs/spec" ||
+        url.pathname === "/docs/spec/"
+      ) {
         if (wantsMarkdown(request)) {
           return text(SPEC_MARKDOWN, "text/markdown; charset=utf-8", { vary: "Accept" });
         }
