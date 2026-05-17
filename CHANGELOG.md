@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add card-level diff metadata, tile previews, and run-drawer patch rendering for changed files.
 - Add GitHub Pages documentation for docs.crabyard.ai.
 - Clear seeded and smoke-test cards from production boards.
 - Add Crabyard logo branding to the app and hide unavailable GitHub OAuth login.

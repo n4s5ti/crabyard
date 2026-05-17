@@ -473,6 +473,65 @@
         color: var(--muted);
         font-size: 13px;
       }
+      .change-card {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel-2);
+        padding: 8px;
+        display: grid;
+        gap: 6px;
+      }
+      .change-card-head,
+      .change-file {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 7px;
+        align-items: center;
+      }
+      .change-card-head {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .change-file {
+        min-width: 0;
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        font-size: 11px;
+      }
+      .change-path {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .change-delta {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+      .change-delta .add {
+        color: var(--success);
+      }
+      .change-delta .del {
+        color: #ef4444;
+      }
+      .status-badge {
+        border-radius: 4px;
+        padding: 2px 5px;
+        background: var(--panel);
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+      .status-badge.added {
+        color: var(--success);
+      }
+      .status-badge.deleted {
+        color: #ef4444;
+      }
+      .status-badge.renamed {
+        color: var(--warning);
+      }
       .card-actions {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -551,6 +610,11 @@
         grid-template-columns: 1fr 220px;
         gap: 14px;
       }
+      .run-main {
+        min-width: 0;
+        display: grid;
+        gap: 12px;
+      }
       .terminal {
         height: 410px;
         overflow: auto;
@@ -563,6 +627,59 @@
         font-size: 13px;
         line-height: 1.6;
         white-space: pre-wrap;
+      }
+      .diff-panel {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        overflow: hidden;
+      }
+      .diff-panel[hidden] {
+        display: none;
+      }
+      .diff-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .diff-files {
+        display: grid;
+        gap: 6px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      .diff-code {
+        max-height: 320px;
+        overflow: auto;
+        margin: 0;
+        background: #101827;
+        color: #d1d5db;
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.55;
+      }
+      .diff-line {
+        display: block;
+        padding: 0 12px;
+        white-space: pre;
+      }
+      .diff-line.add {
+        background: rgb(16 185 129 / 0.14);
+        color: #86efac;
+      }
+      .diff-line.del {
+        background: rgb(239 68 68 / 0.14);
+        color: #fca5a5;
+      }
+      .diff-line.hunk,
+      .diff-line.file {
+        background: rgb(94 106 210 / 0.16);
+        color: #c7d2fe;
       }
       .sidebox {
         border: 1px solid var(--line);
@@ -805,7 +922,10 @@
         </div>
         <div class="panel-body">
           <div class="run-layout">
-            <pre class="terminal" id="terminal"></pre>
+            <div class="run-main">
+              <pre class="terminal" id="terminal"></pre>
+              <section class="diff-panel" id="diff-panel" hidden></section>
+            </div>
             <aside class="sidebox" id="run-side"></aside>
           </div>
         </div>
@@ -934,7 +1054,16 @@
 
       function matches(card, query) {
         if (!query) return true;
-        return [card.id, card.title, card.repo, card.source, card.runtime, card.policy]
+        const changedPaths = (card.changes?.files || []).map((file) => file.path).join(" ");
+        return [
+          card.id,
+          card.title,
+          card.repo,
+          card.source,
+          card.runtime,
+          card.policy,
+          changedPaths,
+        ]
           .join(" ")
           .toLowerCase()
           .includes(query);
@@ -970,10 +1099,36 @@
           <span class="chip merge">${card.policy}</span>
           ${live}
         </div>
+        ${renderChangeCard(card)}
         <div class="card-actions">
           ${runActions}
         </div>
       </article>`;
+      }
+
+      function renderChangeCard(card) {
+        const changes = card.changes || { files: [], totals: { additions: 0, deletions: 0 } };
+        if (!changes.files.length) return "";
+        const files = changes.files.slice(0, 3).map(renderChangeFile).join("");
+        const remaining =
+          changes.files.length > 3 ? `<span>+${changes.files.length - 3} more</span>` : "";
+        return `<div class="change-card" aria-label="Changed files">
+          <div class="change-card-head">
+            <span>Diff</span>
+            <span>${changes.files.length} files</span>
+            <span class="change-delta"><span class="add">+${changes.totals.additions}</span> <span class="del">-${changes.totals.deletions}</span></span>
+          </div>
+          ${files}
+          ${remaining}
+        </div>`;
+      }
+
+      function renderChangeFile(file) {
+        return `<div class="change-file">
+          <span class="status-badge ${escapeHtml(file.status)}">${statusLabel(file.status)}</span>
+          <span class="change-path" title="${escapeHtml(file.path)}">${escapeHtml(file.path)}</span>
+          <span class="change-delta"><span class="add">+${Number(file.additions) || 0}</span> <span class="del">-${Number(file.deletions) || 0}</span></span>
+        </div>`;
       }
 
       function renderRepoSelect() {
@@ -1057,6 +1212,7 @@
         const drawer = document.getElementById(id);
         drawer.classList.remove("open");
         drawer.setAttribute("aria-hidden", "true");
+        if (id === "run-drawer") activeRunId = null;
       }
 
       function closeAllDrawers() {
@@ -1081,6 +1237,7 @@
         if (!card) return;
         document.getElementById("run-title").textContent = card.id + " - " + card.title;
         document.getElementById("terminal").textContent = card.logs.join("\n");
+        renderDiffPanel(card);
         renderRunSide(card);
         openDrawer("run-drawer");
       }
@@ -1116,7 +1273,52 @@
         if (!terminal || !card) return;
         terminal.textContent = card.logs.join("\n");
         terminal.scrollTop = terminal.scrollHeight;
+        renderDiffPanel(card);
         renderRunSide(card);
+      }
+
+      function renderDiffPanel(card) {
+        const panel = document.getElementById("diff-panel");
+        const changes = card.changes || {
+          files: [],
+          patch: "",
+          totals: { additions: 0, deletions: 0 },
+        };
+        panel.hidden = !changes.files.length;
+        if (panel.hidden) {
+          panel.innerHTML = "";
+          return;
+        }
+        panel.innerHTML = `<div class="diff-title">
+          <span>What changed</span>
+          <span class="change-delta"><span class="add">+${changes.totals.additions}</span> <span class="del">-${changes.totals.deletions}</span></span>
+        </div>
+        <div class="diff-files">${changes.files.map(renderChangeFile).join("")}</div>
+        <pre class="diff-code">${renderPatch(changes.patch)}</pre>`;
+      }
+
+      function renderPatch(patch) {
+        return String(patch || "")
+          .split("\n")
+          .map((line) => {
+            const cls = line.startsWith("diff --git")
+              ? "file"
+              : line.startsWith("@@")
+                ? "hunk"
+                : line.startsWith("+++") || line.startsWith("---")
+                  ? "file"
+                  : line.startsWith("+")
+                    ? "add"
+                    : line.startsWith("-")
+                      ? "del"
+                      : "";
+            return `<span class="diff-line ${cls}">${escapeHtml(line)}</span>`;
+          })
+          .join("");
+      }
+
+      function statusLabel(status) {
+        return { added: "A", deleted: "D", modified: "M", renamed: "R" }[status] || "M";
       }
 
       function findCard(id) {
@@ -1227,6 +1429,15 @@
       async function loadState() {
         try {
           state = await api("/api/state", { authOptional: true });
+          const activeCard = findCard(activeRunId);
+          const runDrawerOpen = document.getElementById("run-drawer").classList.contains("open");
+          if (activeRunId && runDrawerOpen && activeCard?.changes?.files?.length) {
+            const result = await api(`/api/cards/${encodeURIComponent(activeRunId)}/actions`, {
+              method: "POST",
+              body: { action: "attach" },
+            });
+            replaceCard(result.card);
+          }
           if (stateRetryTimer) {
             clearTimeout(stateRetryTimer);
             stateRetryTimer = null;

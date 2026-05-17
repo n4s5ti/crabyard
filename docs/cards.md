@@ -24,6 +24,13 @@ Cards are the primary object in Crabyard. Each card represents a coding task, it
   owner: "steipete",
   startedAt: 1736700000000,
   createdAt: 1736699900000,
+  changes: {
+    files: [
+      { path: "src/index.ts", status: "modified", additions: 18, deletions: 5 }
+    ],
+    patch: "diff --git ...",
+    totals: { files: 1, additions: 18, deletions: 5 }
+  },
   logs: [
     "14:32:01 card created",
     "14:32:01 repo allowlist ok",
@@ -32,6 +39,8 @@ Cards are the primary object in Crabyard. Each card represents a coding task, it
   ]
 }
 ```
+
+Cards stay empty until a run reports changes. Once diff metadata exists, the tile shows Codiff-style file badges, status, and `+/-` totals. The run drawer keeps the terminal log visible and adds a compact patch view for review.
 
 ## Card Sources
 

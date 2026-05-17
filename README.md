@@ -8,6 +8,7 @@ Crabyard gives OpenClaw maintainers a Linear-like board where each card represen
 
 - **Board-based workflow.** Create cards from prompts, GitHub issues, or PRs. Track them through Todo, Running, Human Review, and Done lanes.
 - **Live Codex runs.** Watch autonomous sessions, attach to terminals, take over when needed.
+- **Diff previews.** Card tiles show changed files and totals; the run drawer shows a compact Codiff-style patch view.
 - **Multi-runtime support.** Auto-select between Cloudflare Containers and Crabbox based on job requirements.
 - **Allowlist controls.** Restrict access to OpenClaw org members and specific repos through admin-managed allowlists.
 - **Session logs.** 30-day retention of run events, terminal replay, and artifacts in R2.

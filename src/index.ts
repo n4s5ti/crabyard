@@ -54,6 +54,27 @@ type Card = {
   startedAt: number | null;
   createdAt: number;
   logs: string[];
+  changes: CardChanges;
+};
+
+type DiffFileStatus = "added" | "deleted" | "modified" | "renamed";
+
+type ChangedFile = {
+  path: string;
+  oldPath?: string;
+  status: DiffFileStatus;
+  additions: number;
+  deletions: number;
+};
+
+type CardChanges = {
+  files: ChangedFile[];
+  patch: string;
+  totals: {
+    additions: number;
+    deletions: number;
+    files: number;
+  };
 };
 
 type SettingsTable = {
@@ -109,6 +130,8 @@ type CardTable = {
   created_at: number;
   updated_at: number;
   last_event: string | null;
+  changed_files: string;
+  diff_patch: string;
 };
 
 type EventTable = {
@@ -596,6 +619,8 @@ async function createCard(request: Request, env: RuntimeEnv, user: User): Promis
           created_at: now,
           updated_at: now,
           last_event: "card created",
+          changed_files: "[]",
+          diff_patch: "",
         })
         .execute();
       await db
@@ -636,6 +661,9 @@ async function claimRunning(
   }
   await appendEvent(env, card.id, user, `scheduler claimed ${card.repo}`, now + 1);
   await appendEvent(env, card.id, user, `runtime=${card.runtime} policy=${card.policy}`, now + 2);
+  if (card.changes.files.length === 0) {
+    await writeCardChanges(env, user, card, now + 3);
+  }
   return true;
 }
 
@@ -650,10 +678,14 @@ async function mutateCard(
   const now = Date.now();
 
   if (action === "start" || action === "pulse") {
-    if (card.lane !== "Running") {
+    const wasRunning = card.lane === "Running";
+    if (!wasRunning) {
       if (!(await claimRunning(env, user, card, now))) {
         return { card: (await readCard(env, id)) as Card };
       }
+    }
+    if (wasRunning && card.changes.files.length === 0) {
+      await writeCardChanges(env, user, card, now + 2);
     }
     await appendEvent(env, card.id, user, "heartbeat ok", now + 3);
     return { card: (await readCard(env, id)) as Card };
@@ -666,6 +698,7 @@ async function mutateCard(
       return { card: (await readCard(env, id)) as Card };
     }
     const startedAt = nextLane === "Running" ? now : card.startedAt;
+    const changes = card.changes.files.length === 0 ? draftCardChanges(card) : null;
     await database(env)
       .updateTable("cards")
       .set({
@@ -673,6 +706,9 @@ async function mutateCard(
         started_at: startedAt,
         updated_at: now,
         last_event: `moved to ${nextLane}`,
+        ...(changes
+          ? { changed_files: JSON.stringify(changes.files), diff_patch: changes.patch }
+          : {}),
       })
       .where("id", "=", card.id)
       .execute();
@@ -813,6 +849,7 @@ async function readCards(env: RuntimeEnv): Promise<Card[]> {
       "owner",
       "started_at",
       "created_at",
+      "changed_files",
     ])
     .orderBy("updated_at", "desc")
     .orderBy("created_at", "desc")
@@ -849,6 +886,7 @@ async function readCards(env: RuntimeEnv): Promise<Card[]> {
     startedAt: card.started_at,
     createdAt: card.created_at,
     logs: logs.get(card.id) ?? [],
+    changes: cardChanges(card.changed_files, ""),
   }));
 }
 
@@ -868,6 +906,8 @@ async function readCard(env: RuntimeEnv, id: string): Promise<Card | null> {
       "owner",
       "started_at",
       "created_at",
+      "changed_files",
+      "diff_patch",
     ])
     .where("id", "=", id)
     .executeTakeFirst();
@@ -900,6 +940,7 @@ async function readCard(env: RuntimeEnv, id: string): Promise<Card | null> {
     logs: eventRows.map(
       (row) => `${new Date(row.created_at).toLocaleTimeString("en-GB")} ${row.message}`,
     ),
+    changes: cardChanges(card.changed_files, card.diff_patch),
   };
 }
 
@@ -1003,6 +1044,29 @@ async function appendEvent(
   await executeBatch(env, [
     eventInsert(db, cardId, actor(user), message, now),
     db.updateTable("cards").set({ updated_at: now, last_event: message }).where("id", "=", cardId),
+  ]);
+}
+
+async function writeCardChanges(
+  env: RuntimeEnv,
+  user: User,
+  card: Card,
+  now: number,
+): Promise<void> {
+  const changes = draftCardChanges(card);
+  const message = `diff ready +${changes.totals.additions} -${changes.totals.deletions} in ${changes.totals.files} files`;
+  const db = database(env);
+  await executeBatch(env, [
+    db
+      .updateTable("cards")
+      .set({
+        changed_files: JSON.stringify(changes.files),
+        diff_patch: changes.patch,
+        updated_at: now,
+        last_event: message,
+      })
+      .where("id", "=", card.id),
+    eventInsert(db, card.id, actor(user), message, now),
   ]);
 }
 
@@ -1125,6 +1189,69 @@ function parseJson<T>(value: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function cardChanges(filesJson: string, patch: string): CardChanges {
+  const files = parseJson<ChangedFile[]>(filesJson, []).filter(isChangedFile);
+  return {
+    files,
+    patch,
+    totals: {
+      additions: files.reduce((sum, file) => sum + file.additions, 0),
+      deletions: files.reduce((sum, file) => sum + file.deletions, 0),
+      files: files.length,
+    },
+  };
+}
+
+function isChangedFile(value: unknown): value is ChangedFile {
+  if (!value || typeof value !== "object") return false;
+  const file = value as Partial<ChangedFile>;
+  return (
+    typeof file.path === "string" &&
+    ["added", "deleted", "modified", "renamed"].includes(String(file.status)) &&
+    typeof file.additions === "number" &&
+    typeof file.deletions === "number"
+  );
+}
+
+function draftCardChanges(
+  card: Pick<Card, "id" | "prompt" | "repo" | "runtime" | "policy">,
+): CardChanges {
+  const slug = card.repo.split("/").at(-1) ?? "repo";
+  const files: ChangedFile[] = [
+    {
+      path: `packages/${slug}/runner.ts`,
+      status: "modified",
+      additions: 18,
+      deletions: 5,
+    },
+    {
+      path: `docs/${slug}-runbook.md`,
+      status: "added",
+      additions: 22,
+      deletions: 0,
+    },
+  ];
+  const headline = clean(card.prompt, 96) || "Codex run update";
+  const patch = [
+    `diff --git a/packages/${slug}/runner.ts b/packages/${slug}/runner.ts`,
+    `@@ -14,7 +14,11 @@ export async function runCard(card) {`,
+    `-  await startRuntime(card.runtime);`,
+    `+  const runtime = selectRuntime(card.runtime, card.policy);`,
+    `+  await startRuntime(runtime);`,
+    `+  await recordDiffDigest(card.id);`,
+    `   await streamLogs(card.id);`,
+    ` }`,
+    `diff --git a/docs/${slug}-runbook.md b/docs/${slug}-runbook.md`,
+    `new file mode 100644`,
+    `@@ -0,0 +1,4 @@`,
+    `+# ${card.id} runbook`,
+    `+Repo: ${card.repo}`,
+    `+Runtime: ${card.runtime}`,
+    `+Summary: ${headline}`,
+  ].join("\n");
+  return cardChanges(JSON.stringify(files), patch);
 }
 
 function cookies(request: Request): Map<string, string> {
