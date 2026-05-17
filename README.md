@@ -1,6 +1,6 @@
-# Crabyard.ai
+# 🕹️ [Crabyard](https://github.com/openclaw/crabyard)
 
-**Cloudflare-native control plane for OpenClaw Codex runs.**
+**Mission control for Agent runs.**
 
 Crabyard gives OpenClaw maintainers a Linear-like board where each card represents a coding task, live Codex session, and durable execution history.
 
