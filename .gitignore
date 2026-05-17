@@ -1,0 +1,6 @@
+node_modules/
+src/spec.generated.ts
+src/generated.ts
+dist/
+.wrangler/
+.pnpm-store/

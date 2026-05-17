@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "crabyard-ai",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-17",
+  "build": {
+    "command": "node scripts/generate-assets.mjs",
+  },
+  "account_id": "91b59577e757131d68d55a471fe32aca",
+  "workers_dev": true,
+  // Enable after crabyard.ai exists as a Cloudflare zone in this account:
+  // "routes": [{ "pattern": "crabyard.ai", "custom_domain": true }],
+  "observability": {
+    "enabled": true,
+  },
+}

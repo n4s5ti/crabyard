@@ -1,0 +1,21 @@
+{
+  "name": "crabyard-ai",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/generate-assets.mjs && tsc --noEmit",
+    "build:static": "node scripts/generate-assets.mjs --static",
+    "deploy": "pnpm build && wrangler deploy",
+    "lint": "oxlint --ignore-pattern node_modules --ignore-pattern src/generated.ts .",
+    "format": "oxfmt --check .",
+    "check": "pnpm build && pnpm lint && pnpm format"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "oxfmt": "^0.50.0",
+    "oxlint": "^1.65.0",
+    "typescript": "^6.0.3",
+    "wrangler": "^4.92.0"
+  },
+  "packageManager": "pnpm@10.23.0"
+}

@@ -1,0 +1,1156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crabyard.ai</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --ink: #0d0d0d;
+        --muted: #6b7280;
+        --faint: #9ca3af;
+        --paper: #fafafa;
+        --panel: #ffffff;
+        --panel-2: #f9fafb;
+        --line: #e5e7eb;
+        --line-strong: #d1d5db;
+        --primary: #5e6ad2;
+        --primary-dark: #4c59c6;
+        --accent: #0ea5e9;
+        --success: #10b981;
+        --warning: #f59e0b;
+        --shadow: 0 1px 3px rgb(0 0 0 / 0.1), 0 1px 2px rgb(0 0 0 / 0.06);
+        --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.05);
+        font-family:
+          ui-sans-serif,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          system-ui,
+          sans-serif;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --ink: #f9fafb;
+          --muted: #9ca3af;
+          --faint: #6b7280;
+          --paper: #0f1419;
+          --panel: #1a1f2e;
+          --panel-2: #151a27;
+          --line: #2d3648;
+          --line-strong: #3d4657;
+          --primary: #6b7ad6;
+          --primary-dark: #5e6ad2;
+          --accent: #38bdf8;
+          --success: #34d399;
+          --warning: #fbbf24;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        min-height: 100%;
+      }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--paper);
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+      button {
+        min-height: 32px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        color: var(--ink);
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        padding: 0 12px;
+      }
+      button:hover {
+        background: var(--panel-2);
+        border-color: var(--line-strong);
+      }
+      button.primary {
+        border-color: var(--primary);
+        background: var(--primary);
+        color: #fff;
+        font-weight: 600;
+      }
+      button.primary:hover {
+        background: var(--primary-dark);
+        border-color: var(--primary-dark);
+      }
+      button.ghost {
+        border-color: transparent;
+        background: transparent;
+      }
+      button.ghost:hover {
+        background: var(--panel-2);
+      }
+      button.icon {
+        width: 32px;
+        padding: 0;
+        font-weight: 600;
+      }
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        color: var(--ink);
+        padding: 8px 12px;
+        outline: none;
+        transition: all 0.15s ease;
+      }
+      input:focus,
+      select:focus,
+      textarea:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgb(94 106 210 / 0.1);
+      }
+      textarea {
+        min-height: 80px;
+        resize: vertical;
+      }
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+      }
+      a {
+        color: var(--primary);
+        text-decoration: none;
+        transition: color 0.15s ease;
+      }
+      a:hover {
+        color: var(--primary-dark);
+      }
+
+      .app {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr);
+      }
+      .rail {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        padding: 12px 8px;
+        border-right: 1px solid var(--line);
+        background: var(--panel);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+      }
+      .mark {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        background: var(--primary);
+        color: #fff;
+        margin-bottom: 8px;
+        font-size: 14px;
+      }
+      .rail button {
+        width: 40px;
+        height: 36px;
+        padding: 0;
+        font-size: 13px;
+        font-weight: 600;
+        border-radius: 6px;
+      }
+      .rail button.active {
+        background: var(--panel-2);
+        color: var(--primary);
+      }
+      .rail .spacer {
+        flex: 1;
+      }
+
+      .shell {
+        min-width: 0;
+        padding: 24px 32px 40px;
+      }
+      .top {
+        display: grid;
+        grid-template-columns: minmax(260px, 1fr) auto;
+        gap: 18px;
+        align-items: start;
+        margin-bottom: 18px;
+      }
+      .title h1 {
+        margin: 0;
+        font-size: clamp(28px, 4vw, 48px);
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+        font-weight: 700;
+      }
+      .title p {
+        margin: 10px 0 0;
+        color: var(--muted);
+        max-width: 780px;
+        line-height: 1.6;
+      }
+      .status-strip {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(96px, 1fr));
+        gap: 8px;
+        min-width: 470px;
+      }
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 12px 14px;
+      }
+      .metric span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .metric strong {
+        display: block;
+        margin-top: 4px;
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--ink);
+      }
+
+      .toolbar {
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) auto auto auto;
+        gap: 9px;
+        align-items: center;
+        margin-bottom: 14px;
+      }
+      .toolbar .segmented {
+        display: flex;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        overflow: hidden;
+        background: var(--panel);
+        padding: 2px;
+        gap: 2px;
+      }
+      .segmented button {
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        padding: 0 12px;
+        font-weight: 500;
+      }
+      .segmented button:hover {
+        background: var(--panel-2);
+      }
+      .segmented button.active {
+        background: var(--panel-2);
+        color: var(--ink);
+        font-weight: 600;
+        box-shadow: var(--shadow);
+      }
+
+      .board {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(248px, 1fr));
+        gap: 12px;
+        align-items: start;
+      }
+      .lane {
+        min-height: 560px;
+        border-radius: 8px;
+        background: var(--panel-2);
+        overflow: hidden;
+      }
+      .lane-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 14px;
+        background: var(--panel-2);
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .lane-head small {
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .cards {
+        display: grid;
+        gap: 8px;
+        padding: 10px;
+      }
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .card:hover {
+        border-color: var(--line-strong);
+        box-shadow: var(--shadow);
+      }
+      .card.running {
+        border-left: 3px solid var(--accent);
+      }
+      .card.review {
+        border-left: 3px solid var(--warning);
+      }
+      .card.done {
+        border-left: 3px solid var(--success);
+      }
+      .card h3 {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.4;
+        font-weight: 600;
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        border-radius: 4px;
+        padding: 3px 8px;
+        background: var(--panel-2);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .chip.hot {
+        background: rgb(14 165 233 / 0.1);
+        color: var(--accent);
+      }
+      .chip.merge {
+        background: rgb(94 106 210 / 0.1);
+        color: var(--primary);
+      }
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .card-actions {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+      }
+      .card-actions button {
+        font-size: 12px;
+        font-weight: 800;
+        padding: 0 8px;
+      }
+
+      .drawer {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: none;
+        background: rgb(0 0 0 / 0.4);
+        backdrop-filter: blur(4px);
+        padding: 0;
+      }
+      .drawer.open {
+        display: grid;
+        place-items: stretch end;
+      }
+      .panel {
+        width: min(560px, 100%);
+        height: 100%;
+        border-left: 1px solid var(--line);
+        background: var(--panel);
+        box-shadow: var(--shadow-lg);
+        display: grid;
+        grid-template-rows: auto 1fr;
+        overflow: hidden;
+      }
+      .panel.wide {
+        width: min(820px, 100%);
+      }
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+      }
+      .panel-head h2 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .panel-body {
+        min-height: 0;
+        overflow: auto;
+        padding: 20px;
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .full {
+        grid-column: 1 / -1;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid var(--line);
+      }
+
+      .run-layout {
+        display: grid;
+        grid-template-columns: 1fr 220px;
+        gap: 14px;
+      }
+      .terminal {
+        height: 410px;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #1a1f2e;
+        color: #e5e7eb;
+        padding: 16px;
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+      }
+      .sidebox {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .sidebox h3 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .kv {
+        display: grid;
+        gap: 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .kv strong {
+        color: var(--ink);
+      }
+
+      .admin-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .admin-box {
+        min-height: 260px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .admin-box h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .list {
+        display: grid;
+        gap: 6px;
+      }
+      .list-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 8px;
+        min-height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel-2);
+        padding: 8px 10px;
+        font-size: 13px;
+        word-break: break-word;
+        transition: all 0.15s ease;
+      }
+      .list-row:hover {
+        border-color: var(--line-strong);
+      }
+      .empty {
+        border: 1px dashed var(--line);
+        border-radius: 6px;
+        padding: 24px;
+        color: var(--muted);
+        text-align: center;
+        font-size: 13px;
+      }
+
+      @media (max-width: 1180px) {
+        .top {
+          grid-template-columns: 1fr;
+        }
+        .status-strip {
+          min-width: 0;
+        }
+        .board {
+          grid-template-columns: repeat(2, minmax(248px, 1fr));
+        }
+        .admin-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (max-width: 720px) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+        .rail {
+          position: static;
+          height: auto;
+          flex-direction: row;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+        .rail .spacer {
+          display: none;
+        }
+        .shell {
+          padding: 16px;
+        }
+        .toolbar,
+        .status-strip,
+        .board,
+        .run-layout,
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+        .lane {
+          min-height: 0;
+        }
+        .drawer {
+          padding: 8px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="rail" aria-label="Primary">
+        <div class="mark" title="Crabyard.ai">CY</div>
+        <button class="active" data-view="board" title="Board">B</button>
+        <button data-view="admin" title="Admin">A</button>
+        <button data-view="logs" title="Logs">L</button>
+        <div class="spacer"></div>
+        <button onclick="location.href = '/docs/spec'" title="Spec">S</button>
+      </aside>
+
+      <main class="shell">
+        <section class="top">
+          <div class="title">
+            <h1>Crabyard.ai</h1>
+            <p>
+              OpenClaw Codex runs, repo-gated cards, attachable sessions, and merge policy in one
+              operations board.
+            </p>
+          </div>
+          <div class="status-strip" id="metrics"></div>
+        </section>
+
+        <section class="toolbar">
+          <input id="search" type="search" placeholder="Search cards, repos, runs" />
+          <div class="segmented" aria-label="Board filter">
+            <button class="active" data-filter="all">All</button>
+            <button data-filter="mine">Mine</button>
+            <button data-filter="hot">Live</button>
+          </div>
+          <button class="primary" id="new-card">New card</button>
+          <button id="admin-button">Admin</button>
+        </section>
+
+        <section class="board" id="board" aria-label="Crabyard board"></section>
+      </main>
+    </div>
+
+    <div class="drawer" id="card-drawer" aria-hidden="true">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>New card</h2>
+          <button class="icon" data-close="card-drawer">x</button>
+        </div>
+        <div class="panel-body">
+          <form id="card-form" class="form-grid">
+            <label
+              >Source
+              <select name="source">
+                <option>Prompt</option>
+                <option>Issue</option>
+                <option>PR</option>
+              </select>
+            </label>
+            <label
+              >Repo
+              <select name="repo" id="repo-select"></select>
+            </label>
+            <label class="full"
+              >Title
+              <input name="title" required placeholder="Implement allowlisted admin workflow" />
+            </label>
+            <label class="full"
+              >Prompt
+              <textarea name="prompt" required placeholder="Describe the Codex task"></textarea>
+            </label>
+            <label
+              >Runtime
+              <select name="runtime">
+                <option>auto</option>
+                <option>container</option>
+                <option>crabbox</option>
+              </select>
+            </label>
+            <label
+              >Merge policy
+              <select name="policy">
+                <option>open_pr</option>
+                <option>merge_when_green</option>
+                <option>fix_until_green_and_merge</option>
+              </select>
+            </label>
+            <div class="actions full">
+              <button type="button" data-close="card-drawer">Cancel</button>
+              <button class="primary" type="submit">Create</button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </div>
+
+    <div class="drawer" id="run-drawer" aria-hidden="true">
+      <section class="panel wide">
+        <div class="panel-head">
+          <h2 id="run-title">Run</h2>
+          <button class="icon" data-close="run-drawer">x</button>
+        </div>
+        <div class="panel-body">
+          <div class="run-layout">
+            <pre class="terminal" id="terminal"></pre>
+            <aside class="sidebox" id="run-side"></aside>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="drawer" id="admin-drawer" aria-hidden="true">
+      <section class="panel wide">
+        <div class="panel-head">
+          <h2>Admin</h2>
+          <button class="icon" data-close="admin-drawer">x</button>
+        </div>
+        <div class="panel-body">
+          <div class="admin-grid">
+            <section class="admin-box">
+              <h3>Users and teams</h3>
+              <div class="form-grid">
+                <input id="allow-input" class="full" placeholder="@login or @org/team" />
+                <button id="add-allow" class="primary full">Add</button>
+              </div>
+              <div class="list" id="allow-list"></div>
+            </section>
+            <section class="admin-box">
+              <h3>Repos</h3>
+              <div class="form-grid">
+                <input id="repo-input" class="full" placeholder="owner/repo" />
+                <button id="add-repo" class="primary full">Add</button>
+              </div>
+              <div class="list" id="repo-list"></div>
+            </section>
+            <section class="admin-box">
+              <h3>Policy</h3>
+              <label
+                >Concurrent cap
+                <input id="cap-input" type="number" min="1" max="200" />
+              </label>
+              <label
+                >Direct merge
+                <select id="merge-input">
+                  <option value="guarded">Guarded</option>
+                  <option value="disabled">Disabled</option>
+                  <option value="maintainers">Maintainers only</option>
+                </select>
+              </label>
+              <label
+                >Log retention
+                <select id="retention-input">
+                  <option value="30">30 days</option>
+                  <option value="14">14 days</option>
+                  <option value="60">60 days</option>
+                </select>
+              </label>
+              <button id="save-policy" class="primary">Save policy</button>
+              <div class="kv">
+                <span>Secrets: <strong>per org, referenced only</strong></span>
+                <span>VNC: <strong>Crabbox leases only</strong></span>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const lanes = ["Todo", "Running", "Human Review", "Done"];
+      const storeKey = "crabyard:mvp:v2";
+      let filter = "all";
+      let activeRunId = null;
+
+      const seed = {
+        org: "OpenClaw",
+        cap: 20,
+        retention: "30",
+        merge: "guarded",
+        allow: ["@steipete", "@openclaw/maintainers"],
+        repos: ["openclaw/crabyard", "openclaw/clawsweeper", "openclaw/crabbox"],
+        cards: [
+          {
+            id: "CY-101",
+            title: "Wire admin allowlists",
+            prompt: "Build admin editing for users, teams, repos, runtime caps, and merge policy.",
+            repo: "openclaw/crabyard",
+            source: "Prompt",
+            runtime: "container",
+            policy: "open_pr",
+            lane: "Todo",
+            owner: "me",
+            createdAt: Date.now() - 1000 * 60 * 43,
+            logs: ["queued card CY-101", "repo gate pending"],
+          },
+          {
+            id: "CY-102",
+            title: "Crabbox manual attach path",
+            prompt:
+              "Expose watch and takeover affordances for a Codex CLI session with VNC eligibility.",
+            repo: "openclaw/crabbox",
+            source: "Issue",
+            runtime: "crabbox",
+            policy: "fix_until_green_and_merge",
+            lane: "Running",
+            owner: "me",
+            startedAt: Date.now() - 1000 * 60 * 9,
+            logs: ["lease acquired", "codex cli attached", "heartbeat ok", "streaming terminal"],
+          },
+          {
+            id: "CY-103",
+            title: "Review stale PR recovery",
+            prompt: "Validate required checks and route merge through guarded policy.",
+            repo: "openclaw/clawsweeper",
+            source: "PR",
+            runtime: "auto",
+            policy: "merge_when_green",
+            lane: "Human Review",
+            owner: "team",
+            createdAt: Date.now() - 1000 * 60 * 120,
+            logs: ["checks green", "head sha locked", "waiting for maintainer"],
+          },
+        ],
+      };
+
+      let state = loadState();
+
+      function loadState() {
+        try {
+          const raw = localStorage.getItem(storeKey);
+          return raw ? { ...seed, ...JSON.parse(raw) } : structuredClone(seed);
+        } catch {
+          return structuredClone(seed);
+        }
+      }
+
+      function saveState() {
+        localStorage.setItem(storeKey, JSON.stringify(state));
+      }
+
+      function render() {
+        renderMetrics();
+        renderBoard();
+        renderAdmin();
+        renderRepoSelect();
+      }
+
+      function renderMetrics() {
+        const active = state.cards.filter((card) => card.lane === "Running").length;
+        const queue = state.cards.filter((card) => card.lane === "Todo").length;
+        const review = state.cards.filter((card) => card.lane === "Human Review").length;
+        document.getElementById("metrics").innerHTML = [
+          ["Active", active + " / " + state.cap],
+          ["Queue", queue],
+          ["Review", review],
+          ["Logs", state.retention + "d"],
+        ]
+          .map(
+            ([label, value]) =>
+              `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`,
+          )
+          .join("");
+      }
+
+      function renderBoard() {
+        const query = document.getElementById("search").value.trim().toLowerCase();
+        const board = document.getElementById("board");
+        board.innerHTML = lanes
+          .map((lane) => {
+            const cards = visibleCards().filter(
+              (card) => card.lane === lane && matches(card, query),
+            );
+            const body = cards.length
+              ? cards.map(renderCard).join("")
+              : `<div class="empty">No cards</div>`;
+            return `<section class="lane"><div class="lane-head"><span>${lane}</span><small>${cards.length}</small></div><div class="cards">${body}</div></section>`;
+          })
+          .join("");
+      }
+
+      function visibleCards() {
+        if (filter === "mine") return state.cards.filter((card) => card.owner === "me");
+        if (filter === "hot") return state.cards.filter((card) => card.lane === "Running");
+        return state.cards;
+      }
+
+      function matches(card, query) {
+        if (!query) return true;
+        return [card.id, card.title, card.repo, card.source, card.runtime, card.policy]
+          .join(" ")
+          .toLowerCase()
+          .includes(query);
+      }
+
+      function renderCard(card) {
+        const cls =
+          card.lane === "Running"
+            ? "running"
+            : card.lane === "Human Review"
+              ? "review"
+              : card.lane === "Done"
+                ? "done"
+                : "";
+        const live =
+          card.lane === "Running"
+            ? `<span class="chip hot">live ${elapsed(card.startedAt)}</span>`
+            : "";
+        return `<article class="card ${cls}">
+        <div>
+          <h3>${escapeHtml(card.title)}</h3>
+          <p>${escapeHtml(card.prompt)}</p>
+        </div>
+        <div class="meta">
+          <span class="chip">${card.id}</span>
+          <span class="chip">${escapeHtml(card.repo)}</span>
+          <span class="chip">${card.runtime}</span>
+          <span class="chip merge">${card.policy}</span>
+          ${live}
+        </div>
+        <div class="card-actions">
+          <button data-action="start" data-id="${card.id}">${card.lane === "Running" ? "Pulse" : "Start"}</button>
+          <button data-action="attach" data-id="${card.id}">Attach</button>
+          <button data-action="advance" data-id="${card.id}">Move</button>
+        </div>
+      </article>`;
+      }
+
+      function renderRepoSelect() {
+        document.getElementById("repo-select").innerHTML = state.repos
+          .map((repo) => `<option>${escapeHtml(repo)}</option>`)
+          .join("");
+      }
+
+      function renderAdmin() {
+        document.getElementById("cap-input").value = state.cap;
+        document.getElementById("retention-input").value = state.retention;
+        document.getElementById("merge-input").value = state.merge;
+        renderList("allow-list", state.allow, "allow");
+        renderList("repo-list", state.repos, "repo");
+      }
+
+      function renderList(id, items, kind) {
+        document.getElementById(id).innerHTML = items
+          .map(
+            (item) => `
+        <div class="list-row"><span>${escapeHtml(item)}</span><button class="icon" data-remove="${kind}" data-value="${escapeHtml(item)}">x</button></div>
+      `,
+          )
+          .join("");
+      }
+
+      function openDrawer(id) {
+        const drawer = document.getElementById(id);
+        drawer.classList.add("open");
+        drawer.setAttribute("aria-hidden", "false");
+      }
+
+      function closeDrawer(id) {
+        const drawer = document.getElementById(id);
+        drawer.classList.remove("open");
+        drawer.setAttribute("aria-hidden", "true");
+      }
+
+      function closeAllDrawers() {
+        document.querySelectorAll(".drawer.open").forEach((drawer) => {
+          drawer.classList.remove("open");
+          drawer.setAttribute("aria-hidden", "true");
+        });
+      }
+
+      function startCard(id) {
+        const running = state.cards.filter((card) => card.lane === "Running").length;
+        const card = findCard(id);
+        if (!card) return;
+        const wasRunning = card.lane === "Running";
+        if (!state.repos.includes(card.repo)) {
+          card.logs.push("repo blocked by allowlist: " + card.repo);
+          saveState();
+          render();
+          return;
+        }
+        if (!wasRunning && running >= state.cap) {
+          card.logs.push("capacity blocked at cap " + state.cap);
+          saveState();
+          render();
+          return;
+        }
+        card.lane = "Running";
+        card.startedAt = wasRunning ? card.startedAt : Date.now();
+        card.logs.push(time() + " scheduler claimed " + card.repo);
+        card.logs.push(time() + " runtime=" + card.runtime + " policy=" + card.policy);
+        card.logs.push(time() + " heartbeat ok");
+        saveState();
+        render();
+      }
+
+      function advanceCard(id) {
+        const card = findCard(id);
+        if (!card) return;
+        const index = lanes.indexOf(card.lane);
+        card.lane = lanes[(index + 1) % lanes.length];
+        card.logs.push(time() + " moved to " + card.lane);
+        if (card.lane === "Running") card.startedAt = Date.now();
+        saveState();
+        render();
+      }
+
+      function attachCard(id) {
+        activeRunId = id;
+        const card = findCard(id);
+        if (!card) return;
+        document.getElementById("run-title").textContent = card.id + " - " + card.title;
+        document.getElementById("terminal").textContent = card.logs.join("\n");
+        renderRunSide(card);
+        openDrawer("run-drawer");
+      }
+
+      function renderRunSide(card) {
+        document.getElementById("run-side").innerHTML = `
+        <h3>Session</h3>
+        <div class="kv">
+          <span>Repo <strong>${escapeHtml(card.repo)}</strong></span>
+          <span>Runtime <strong>${card.runtime}</strong></span>
+          <span>Policy <strong>${card.policy}</strong></span>
+          <span>State <strong>${card.lane}</strong></span>
+          <span>VNC <strong>${card.runtime === "crabbox" ? "available" : "not available"}</strong></span>
+        </div>
+        <button class="primary" id="takeover">Take over</button>
+        <button id="watch">Watch</button>
+        <button id="stall">Mark stalled</button>
+      `;
+      }
+
+      function appendRun(message) {
+        const card = findCard(activeRunId);
+        if (!card) return;
+        card.logs.push(time() + " " + message);
+        refreshActiveTerminal();
+        saveState();
+        render();
+      }
+
+      function refreshActiveTerminal() {
+        const terminal = document.getElementById("terminal");
+        const card = findCard(activeRunId);
+        if (!terminal || !card) return;
+        terminal.textContent = card.logs.join("\n");
+        terminal.scrollTop = terminal.scrollHeight;
+        renderRunSide(card);
+      }
+
+      function findCard(id) {
+        return state.cards.find((card) => card.id === id);
+      }
+
+      function elapsed(value) {
+        if (!value) return "0m";
+        const minutes = Math.max(1, Math.floor((Date.now() - value) / 60000));
+        return minutes + "m";
+      }
+
+      function time() {
+        return new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      document.addEventListener("click", (event) => {
+        const target = event.target.closest("button");
+        if (!target) return;
+        if (target.dataset.close) closeDrawer(target.dataset.close);
+        if (target.id === "new-card") openDrawer("card-drawer");
+        if (target.dataset.view === "board") closeAllDrawers();
+        if (target.id === "admin-button" || target.dataset.view === "admin")
+          openDrawer("admin-drawer");
+        if (target.dataset.view === "logs") {
+          const live = state.cards.find((card) => card.lane === "Running") || state.cards[0];
+          if (live) attachCard(live.id);
+        }
+        if (target.dataset.filter) {
+          filter = target.dataset.filter;
+          document
+            .querySelectorAll("[data-filter]")
+            .forEach((button) => button.classList.toggle("active", button === target));
+          renderBoard();
+        }
+        if (target.dataset.action === "start") startCard(target.dataset.id);
+        if (target.dataset.action === "advance") advanceCard(target.dataset.id);
+        if (target.dataset.action === "attach") attachCard(target.dataset.id);
+        if (target.dataset.remove === "allow")
+          state.allow = state.allow.filter((item) => item !== target.dataset.value);
+        if (target.dataset.remove === "repo")
+          state.repos = state.repos.filter((item) => item !== target.dataset.value);
+        if (target.dataset.remove) {
+          saveState();
+          render();
+        }
+        if (target.id === "add-allow") {
+          const input = document.getElementById("allow-input");
+          if (input.value.trim()) state.allow.push(input.value.trim());
+          input.value = "";
+          saveState();
+          render();
+        }
+        if (target.id === "add-repo") {
+          const input = document.getElementById("repo-input");
+          if (input.value.trim()) state.repos.push(input.value.trim());
+          input.value = "";
+          saveState();
+          render();
+        }
+        if (target.id === "save-policy") {
+          const rawCap = Number(document.getElementById("cap-input").value);
+          state.cap = Number.isFinite(rawCap) ? Math.min(200, Math.max(1, rawCap)) : 20;
+          state.retention = document.getElementById("retention-input").value;
+          state.merge = document.getElementById("merge-input").value;
+          saveState();
+          render();
+        }
+        if (target.id === "takeover") appendRun("operator takeover granted");
+        if (target.id === "watch") appendRun("watch attached");
+        if (target.id === "stall") {
+          const card = findCard(activeRunId);
+          if (card) card.lane = "Human Review";
+          appendRun("stalled; workspace preserved");
+        }
+      });
+
+      document.getElementById("search").addEventListener("input", renderBoard);
+
+      document.getElementById("card-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        const id = "CY-" + String(100 + state.cards.length + 1);
+        state.cards.unshift({
+          id,
+          title: data.get("title"),
+          prompt: data.get("prompt"),
+          repo: data.get("repo"),
+          source: data.get("source"),
+          runtime: data.get("runtime"),
+          policy: data.get("policy"),
+          lane: "Todo",
+          owner: "me",
+          createdAt: Date.now(),
+          logs: [time() + " card created", time() + " repo allowlist ok"],
+        });
+        event.currentTarget.reset();
+        closeDrawer("card-drawer");
+        saveState();
+        render();
+      });
+
+      setInterval(() => {
+        let activeTerminalChanged = false;
+        state.cards
+          .filter((card) => card.lane === "Running")
+          .forEach((card) => {
+            if (Math.random() > 0.55) {
+              card.logs.push(time() + " heartbeat ok");
+              activeTerminalChanged ||= card.id === activeRunId;
+            }
+          });
+        saveState();
+        if (activeTerminalChanged) refreshActiveTerminal();
+        renderMetrics();
+        renderBoard();
+      }, 15000);
+
+      render();
+    </script>
+  </body>
+</html>
