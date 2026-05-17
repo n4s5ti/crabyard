@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Document the real deployed control-plane status, runtime adapter boundary, workflow config, and test stack.
+- Close open side drawers with Escape.
 - Preserve completed run attempt status when operators mark stale cards stalled.
 - Add runtime adapter descriptors with persisted selection reasons and capability-gated takeover.
 - Add repo `CRABYARD.md` workflow evaluation for runtime and merge defaults.

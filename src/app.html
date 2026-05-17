@@ -1750,6 +1750,14 @@
         disposeMissingTerminals(new Set());
       }
 
+      function closeTopDrawer() {
+        const drawers = [...document.querySelectorAll(".drawer.open")];
+        const drawer = drawers.at(-1);
+        if (!drawer) return false;
+        closeDrawer(drawer.id);
+        return true;
+      }
+
       async function startCard(id) {
         await cardAction(id, findCard(id)?.lane === "Running" ? "pulse" : "start");
       }
@@ -2223,6 +2231,11 @@
         if (target.id === "stall") appendRun("stall");
         if (target.id === "theme-toggle") setTheme(theme === "dark" ? "light" : "dark");
         if (target.id === "user-button") logout();
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape" || event.isComposing) return;
+        if (closeTopDrawer()) event.preventDefault();
       });
 
       document.getElementById("search").addEventListener("input", () => {
