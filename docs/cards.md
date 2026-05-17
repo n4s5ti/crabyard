@@ -44,6 +44,8 @@ Cards stay empty until a run reports changes. Once diff metadata exists, the til
 
 ## Card Sources
 
+Type an issue or PR number such as `#76552` in the board search to preview matching GitHub issues/PRs across enabled OpenClaw repos. If the same number exists in multiple repos, each match appears separately and can be turned into a card.
+
 ### Prompt
 
 Freeform coding task.

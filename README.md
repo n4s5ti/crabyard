@@ -7,6 +7,7 @@ Crabyard gives OpenClaw maintainers a Linear-like board where each card represen
 ## What It Does
 
 - **Board-based workflow.** Create cards from prompts, GitHub issues, or PRs. Track them through Todo, Running, Human Review, and Done lanes.
+- **Issue/PR lookup.** Type `#123` in search to preview matching GitHub issues or PRs across enabled OpenClaw repos and create a card from the match.
 - **Live Codex runs.** Watch autonomous sessions, attach to terminals, take over when needed.
 - **Diff previews.** Card tiles show changed files and totals; the run drawer shows a compact Codiff-style patch view.
 - **Multi-runtime support.** Auto-select between Cloudflare Containers and Crabbox based on job requirements.
@@ -116,6 +117,7 @@ Configure these in Cloudflare Workers dashboard:
 - `GITHUB_CLIENT_ID` – GitHub OAuth app client ID (optional)
 - `GITHUB_CLIENT_SECRET` – GitHub OAuth app secret (optional)
 - `GITHUB_ORG` – GitHub org for membership check (default: `openclaw`)
+- `GITHUB_TOKEN` – GitHub token for all enabled repo issue/PR previews (optional; falls back to default repo only)
 
 ### Verify Deployment
 

@@ -304,6 +304,7 @@ Recommended for production.
 4. Add secrets to Cloudflare Worker:
    - `GITHUB_CLIENT_ID`
    - `GITHUB_CLIENT_SECRET`
+   - `GITHUB_TOKEN` for all enabled repo previews (optional; default repo works without it)
 5. Set `GITHUB_ORG` var (default: `openclaw`)
 
 **Session lifetime:**
@@ -404,6 +405,7 @@ Secrets stored in Cloudflare Worker environment, never in D1/R2.
 
 - `GITHUB_CLIENT_ID`
 - `GITHUB_CLIENT_SECRET`
+- `GITHUB_TOKEN` for all enabled repo previews
 - Rotate if leaked
 
 **GitHub App (future):**

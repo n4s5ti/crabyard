@@ -353,6 +353,71 @@
         align-items: center;
         margin-bottom: 14px;
       }
+      .search-wrap {
+        position: relative;
+        min-width: 0;
+      }
+      .ref-preview {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        z-index: 15;
+        width: min(680px, calc(100vw - 128px));
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow-lg);
+        overflow: hidden;
+      }
+      .ref-preview[hidden] {
+        display: none;
+      }
+      .ref-preview-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .ref-preview-list {
+        display: grid;
+        max-height: 360px;
+        overflow: auto;
+      }
+      .ref-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      .ref-row:last-child {
+        border-bottom: 0;
+      }
+      .ref-title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .ref-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 5px;
+      }
+      .ref-empty {
+        padding: 16px 12px;
+        color: var(--muted);
+        font-size: 13px;
+      }
       .toolbar .segmented {
         display: flex;
         border: 1px solid var(--line);
@@ -793,6 +858,13 @@
         .form-grid {
           grid-template-columns: 1fr;
         }
+        .ref-preview {
+          position: fixed;
+          top: 116px;
+          left: 16px;
+          right: 16px;
+          width: auto;
+        }
         .lane {
           min-height: 0;
         }
@@ -846,7 +918,10 @@
         </section>
 
         <section class="toolbar">
-          <input id="search" type="search" placeholder="Search cards, repos, runs" />
+          <div class="search-wrap">
+            <input id="search" type="search" placeholder="Search cards, repos, runs, #76552" />
+            <div class="ref-preview" id="ref-preview" hidden></div>
+          </div>
           <div class="segmented" aria-label="Board filter">
             <button class="active" data-filter="all">All</button>
             <button data-filter="mine">Mine</button>
@@ -1002,6 +1077,9 @@
       let signedIn = false;
       let authMethods = { github: false, token: false };
       let stateRetryTimer = null;
+      let refPreview = { number: "", loading: false, matches: [], error: "" };
+      let refPreviewTimer = null;
+      let refPreviewSeq = 0;
 
       function render() {
         renderMetrics();
@@ -1010,6 +1088,7 @@
         renderRepoSelect();
         renderUser();
         renderShellControls();
+        renderRefPreview();
       }
 
       function renderMetrics() {
@@ -1132,9 +1211,49 @@
       }
 
       function renderRepoSelect() {
-        document.getElementById("repo-select").innerHTML = state.repos
-          .map((repo) => `<option>${escapeHtml(repo)}</option>`)
-          .join("");
+        const select = document.getElementById("repo-select");
+        const repos = preferredRepos(state.repos);
+        select.innerHTML = repos.map((repo) => `<option>${escapeHtml(repo)}</option>`).join("");
+        if (repos.includes("openclaw/openclaw")) select.value = "openclaw/openclaw";
+      }
+
+      function renderRefPreview() {
+        const panel = document.getElementById("ref-preview");
+        if (!refPreview.number) {
+          panel.hidden = true;
+          panel.innerHTML = "";
+          return;
+        }
+        panel.hidden = false;
+        const title = refPreview.loading
+          ? `Looking up #${escapeHtml(refPreview.number)}`
+          : `Matches for #${escapeHtml(refPreview.number)}`;
+        const body = refPreview.loading
+          ? `<div class="ref-empty">Searching allowed OpenClaw repos...</div>`
+          : refPreview.error
+            ? `<div class="ref-empty">${escapeHtml(refPreview.error)}</div>`
+            : refPreview.matches.length
+              ? `<div class="ref-preview-list">${refPreview.matches.map(renderRefRow).join("")}</div>`
+              : `<div class="ref-empty">No issue or PR #${escapeHtml(refPreview.number)} in enabled repos.</div>`;
+        panel.innerHTML = `<div class="ref-preview-head"><span>${title}</span><span>${refPreview.matches.length || ""}</span></div>${body}`;
+      }
+
+      function renderRefRow(match, index) {
+        const createButton = canMaintain()
+          ? `<button class="primary" data-create-ref="${index}">New card</button>`
+          : "";
+        return `<div class="ref-row">
+          <div>
+            <div class="ref-title">${escapeHtml(match.title)}</div>
+            <div class="ref-meta">
+              <span class="chip">${escapeHtml(match.repo)}#${match.number}</span>
+              <span class="chip merge">${escapeHtml(match.source)}</span>
+              <span class="chip">${escapeHtml(match.state)}</span>
+              ${match.author ? `<span class="chip">@${escapeHtml(match.author)}</span>` : ""}
+            </div>
+          </div>
+          ${createButton}
+        </div>`;
       }
 
       function renderAdmin() {
@@ -1325,6 +1444,21 @@
         return state.cards.find((card) => card.id === id);
       }
 
+      function preferredRepos(repos) {
+        return [...repos].sort((left, right) => {
+          if (left === "openclaw/openclaw") return -1;
+          if (right === "openclaw/openclaw") return 1;
+          return left.localeCompare(right);
+        });
+      }
+
+      function issueNumber(value) {
+        const match = String(value || "")
+          .trim()
+          .match(/^#?(\d+)$/);
+        return match ? match[1] : "";
+      }
+
       function elapsed(value) {
         if (!value) return "0m";
         const minutes = Math.max(1, Math.floor((Date.now() - value) / 60000));
@@ -1362,6 +1496,7 @@
         if (target.dataset.action === "start") startCard(target.dataset.id);
         if (target.dataset.action === "advance") advanceCard(target.dataset.id);
         if (target.dataset.action === "attach") attachCard(target.dataset.id);
+        if (target.dataset.createRef) createRefCard(Number(target.dataset.createRef));
         if (target.dataset.remove === "allow") removeAllow(target.dataset.value);
         if (target.dataset.remove === "repo") removeRepo(target.dataset.value);
         if (target.id === "add-allow") {
@@ -1389,7 +1524,10 @@
         if (target.id === "user-button") logout();
       });
 
-      document.getElementById("search").addEventListener("input", renderBoard);
+      document.getElementById("search").addEventListener("input", () => {
+        renderBoard();
+        scheduleRefPreview();
+      });
 
       document.getElementById("card-form").addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -1490,6 +1628,58 @@
         replaceCard(result.card);
         render();
         if (activeRunId === id) refreshActiveTerminal();
+      }
+
+      function scheduleRefPreview() {
+        const number = issueNumber(document.getElementById("search").value);
+        refPreviewSeq += 1;
+        if (refPreviewTimer) clearTimeout(refPreviewTimer);
+        if (!number) {
+          refPreview = { number: "", loading: false, matches: [], error: "" };
+          renderRefPreview();
+          return;
+        }
+        refPreview = { number, loading: true, matches: [], error: "" };
+        renderRefPreview();
+        const seq = refPreviewSeq;
+        refPreviewTimer = setTimeout(() => loadRefPreview(number, seq), 220);
+      }
+
+      async function loadRefPreview(number, seq) {
+        try {
+          const result = await api(`/api/github/refs?number=${encodeURIComponent(number)}`);
+          if (seq !== refPreviewSeq) return;
+          refPreview = { number, loading: false, matches: result.matches || [], error: "" };
+        } catch (error) {
+          if (seq !== refPreviewSeq) return;
+          refPreview = {
+            number,
+            loading: false,
+            matches: [],
+            error: error.message || "GitHub lookup failed",
+          };
+        }
+        renderRefPreview();
+      }
+
+      async function createRefCard(index) {
+        const match = refPreview.matches[index];
+        if (!match) return;
+        const label = `${match.repo}#${match.number}`;
+        await api("/api/cards", {
+          method: "POST",
+          body: {
+            title: `${label}: ${match.title}`,
+            prompt: `${match.source} ${match.url}\n\n${match.title}\n\n${match.body || ""}`,
+            repo: match.repo,
+            source: match.source,
+            runtime: "auto",
+            policy: "open_pr",
+          },
+        });
+        refPreview = { number: "", loading: false, matches: [], error: "" };
+        document.getElementById("search").value = "";
+        await loadState();
       }
 
       async function addAllow(value, role) {

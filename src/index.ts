@@ -21,6 +21,7 @@ type RuntimeEnv = Env & {
   CRABYARD_BOOTSTRAP_TOKEN?: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
+  GITHUB_TOKEN?: string;
   GITHUB_ORG?: string;
 };
 
@@ -39,6 +40,40 @@ type GitHubProfile = {
   login: string;
   email: string | null;
   name: string | null;
+};
+
+type GitHubIssuePayload = {
+  number: number;
+  title: string;
+  state: string;
+  html_url: string;
+  body: string | null;
+  user: { login: string } | null;
+  updated_at: string;
+  pull_request?: unknown;
+};
+
+type GitHubGraphqlRefPayload = {
+  __typename: "Issue" | "PullRequest";
+  number: number;
+  title: string;
+  state: string;
+  url: string;
+  body: string | null;
+  author: { login: string } | null;
+  updatedAt: string;
+};
+
+type GitHubReference = {
+  repo: string;
+  number: number;
+  title: string;
+  source: "Issue" | "PR";
+  state: string;
+  url: string;
+  author: string | null;
+  updatedAt: string;
+  body: string;
 };
 
 type Card = {
@@ -170,6 +205,7 @@ const oauthStateCookie = "crabyard_oauth_state";
 const bootstrapSessionSeconds = 60 * 60;
 const githubSessionSeconds = 60 * 15;
 const lanes = ["Todo", "Running", "Human Review", "Done"];
+const preferredRepo = "openclaw/openclaw";
 
 class D1Dialect implements Dialect {
   constructor(private readonly d1: D1Database) {}
@@ -344,6 +380,11 @@ async function api(request: Request, env: RuntimeEnv): Promise<Response> {
 
   if (request.method === "GET" && url.pathname === "/api/state") {
     return json(await readState(env, user));
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/github/refs") {
+    requireRole(user, "maintainer");
+    return json(await searchGitHubRefs(request, env));
   }
 
   if (request.method === "POST" && url.pathname === "/api/cards") {
@@ -561,6 +602,7 @@ async function readState(env: RuntimeEnv, user: User): Promise<Record<string, un
     db.selectFrom("repos").select("repo").where("enabled", "=", 1).orderBy("repo").execute(),
     readCards(env),
   ]);
+  const repoNames = sortRepos(repos.map((row) => row.repo));
 
   return {
     user,
@@ -570,7 +612,7 @@ async function readState(env: RuntimeEnv, user: User): Promise<Record<string, un
     retention: settings.retention ?? "30",
     merge: settings.merge ?? "guarded",
     allow,
-    repos: repos.map((row) => row.repo),
+    repos: repoNames,
     cards,
   };
 }
@@ -833,6 +875,136 @@ async function removeRepo(
   return readState(env, user);
 }
 
+async function searchGitHubRefs(
+  request: Request,
+  env: RuntimeEnv,
+): Promise<{ matches: GitHubReference[] }> {
+  const url = new URL(request.url);
+  const number = Number(url.searchParams.get("number"));
+  if (!Number.isInteger(number) || number < 1) throw badRequest("issue or PR number is required");
+
+  const rows = await database(env)
+    .selectFrom("repos")
+    .select("repo")
+    .where("enabled", "=", 1)
+    .execute();
+  const repos = sortRepos(rows.map((row) => row.repo)).slice(0, 160);
+  const matches = env.GITHUB_TOKEN
+    ? await fetchGitHubReferences(env, repos, number)
+    : await fetchPublicGitHubReferences(env, repos, number);
+  return { matches };
+}
+
+async function fetchGitHubReferences(
+  env: RuntimeEnv,
+  repos: string[],
+  number: number,
+): Promise<GitHubReference[]> {
+  const targets = repos.flatMap((repo) => {
+    const [owner, name] = repo.split("/");
+    return owner && name ? [{ repo, owner, name }] : [];
+  });
+  if (!targets.length) return [];
+  const selections = targets
+    .map((target, index) => {
+      const { owner, name } = target;
+      return `r${index}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {
+        issueOrPullRequest(number: $number) {
+          __typename
+          ... on Issue { number title state url body author { login } updatedAt }
+          ... on PullRequest { number title state url body author { login } updatedAt }
+        }
+      }`;
+    })
+    .join("\n");
+  const response = await fetch("https://api.github.com/graphql", {
+    method: "POST",
+    headers: {
+      ...githubHeaders(env),
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      query: `query CrabyardRefs($number: Int!) { ${selections} }`,
+      variables: { number },
+    }),
+  });
+  if (response.status === 403 || response.status === 429) {
+    throw serviceUnavailable("GitHub lookup rate limited; retry later");
+  }
+  if (!response.ok) throw serviceUnavailable("GitHub lookup failed; retry later");
+
+  const payload = await response.json<{
+    data?: Record<string, { issueOrPullRequest?: GitHubGraphqlRefPayload | null } | null>;
+    errors?: { type?: string; message?: string }[];
+  }>();
+  if (
+    payload.errors?.some((error) =>
+      /rate|limit/i.test(`${error.type ?? ""} ${error.message ?? ""}`),
+    )
+  ) {
+    throw serviceUnavailable("GitHub lookup rate limited; retry later");
+  }
+  return targets
+    .flatMap((target, index) => {
+      const item = payload.data?.[`r${index}`]?.issueOrPullRequest;
+      return item ? [githubReferenceFromGraphql(target.repo, item)] : [];
+    })
+    .sort((left, right) => sortRepoNames(left.repo, right.repo));
+}
+
+async function fetchPublicGitHubReferences(
+  env: RuntimeEnv,
+  repos: string[],
+  number: number,
+): Promise<GitHubReference[]> {
+  const repo = repos.includes(preferredRepo) ? preferredRepo : repos[0];
+  if (!repo) return [];
+  const match = await fetchGitHubReference(env, repo, number);
+  return match ? [match] : [];
+}
+
+async function fetchGitHubReference(
+  env: RuntimeEnv,
+  repo: string,
+  number: number,
+): Promise<GitHubReference | null> {
+  const response = await fetch(`https://api.github.com/repos/${repo}/issues/${number}`, {
+    headers: githubHeaders(env),
+  });
+  if (response.status === 404 || response.status === 410) return null;
+  if (response.status === 403 || response.status === 429) {
+    throw serviceUnavailable("GitHub search rate limited; retry later");
+  }
+  if (!response.ok) return null;
+
+  const item = await response.json<GitHubIssuePayload>();
+  return {
+    repo,
+    number: item.number,
+    title: item.title,
+    source: item.pull_request ? "PR" : "Issue",
+    state: item.state,
+    url: item.html_url,
+    author: item.user?.login ?? null,
+    updatedAt: item.updated_at,
+    body: item.body ?? "",
+  };
+}
+
+function githubReferenceFromGraphql(repo: string, item: GitHubGraphqlRefPayload): GitHubReference {
+  return {
+    repo,
+    number: item.number,
+    title: item.title,
+    source: item.__typename === "PullRequest" ? "PR" : "Issue",
+    state: item.state.toLowerCase(),
+    url: item.url,
+    author: item.author?.login ?? null,
+    updatedAt: item.updatedAt,
+    body: item.body ?? "",
+  };
+}
+
 async function readCards(env: RuntimeEnv): Promise<Card[]> {
   const db = database(env);
   const cards = await db
@@ -1092,14 +1264,21 @@ function eventInsert(
 async function githubFetch<T>(path: string, token: string): Promise<T> {
   const response = await fetch(`https://api.github.com${path}`, {
     headers: {
-      accept: "application/vnd.github+json",
+      ...githubHeaders(),
       authorization: `Bearer ${token}`,
-      "user-agent": "crabyard-ai",
-      "x-github-api-version": "2022-11-28",
     },
   });
   if (!response.ok) throw new GitHubApiError(response.status);
   return response.json<T>();
+}
+
+function githubHeaders(env?: RuntimeEnv): HeadersInit {
+  return {
+    accept: "application/vnd.github+json",
+    ...(env?.GITHUB_TOKEN ? { authorization: `Bearer ${env.GITHUB_TOKEN}` } : {}),
+    "user-agent": "crabyard-ai",
+    "x-github-api-version": "2022-11-28",
+  };
 }
 
 async function githubFetchPages<T>(path: string, token: string): Promise<T[]> {
@@ -1307,6 +1486,16 @@ function oneOf<T extends string>(value: unknown, options: readonly T[], fallback
 function numberSetting(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function sortRepos(repos: string[]): string[] {
+  return [...repos].sort(sortRepoNames);
+}
+
+function sortRepoNames(left: string, right: string): number {
+  if (left === preferredRepo) return -1;
+  if (right === preferredRepo) return 1;
+  return left.localeCompare(right);
 }
 
 function isConstraintError(error: unknown): boolean {
