@@ -1897,10 +1897,12 @@
       }
 
       function hasRunCapability(card, name) {
-        if (name === "takeover" && !["queued", "leasing", "running"].includes(card.run?.status)) {
-          return false;
-        }
+        if (name === "takeover" && !isActiveRun(card)) return false;
         return runCapabilities(card)[name] === true;
+      }
+
+      function isActiveRun(card) {
+        return ["queued", "leasing", "running"].includes(card.run?.status);
       }
 
       function runtimeCapabilityLabel(card) {
@@ -2039,9 +2041,10 @@
           .filter(([, enabled]) => enabled)
           .map(([name]) => name)
           .join(", ");
+        const stallButton = isActiveRun(card) ? `<button id="stall">Mark stalled</button>` : "";
         const maintainerControls = canMaintain()
           ? `${hasRunCapability(card, "takeover") ? `<button class="primary" id="takeover">Take over</button>` : ""}
-        <button id="stall">Mark stalled</button>`
+        ${stallButton}`
           : "";
         document.getElementById("run-side").innerHTML = `
         <h3>Session</h3>

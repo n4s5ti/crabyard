@@ -1012,6 +1012,9 @@ async function mutateCard(
   }
 
   if (action === "stall") {
+    if (!card.run || !activeRunStatuses.includes(card.run.status)) {
+      throw badRequest("no active run to mark stalled");
+    }
     await markCardStalled(env, card, user, now, "operator marked stalled");
     return { card: (await readCard(env, id)) as Card };
   }
@@ -1732,7 +1735,23 @@ async function markCardStalled(
   reason: string,
 ): Promise<void> {
   const db = database(env);
-  const updates: CompilableQuery[] = [
+  if (!card.run) throw badRequest("no active run to mark stalled");
+  const runUpdate = await db
+    .updateTable("run_attempts")
+    .set({
+      status: "stalled",
+      ended_at: now,
+      updated_at: now,
+      error: reason,
+    })
+    .where("id", "=", card.run.id)
+    .where("card_id", "=", card.id)
+    .where("status", "in", activeRunStatuses)
+    .executeTakeFirst();
+  if ((runUpdate.numUpdatedRows ?? 0n) === 0n) {
+    throw badRequest("run is no longer active");
+  }
+  await executeBatch(env, [
     db
       .updateTable("cards")
       .set({
@@ -1740,23 +1759,10 @@ async function markCardStalled(
         updated_at: now,
         last_event: "stalled; workspace preserved",
       })
-      .where("id", "=", card.id),
+      .where("id", "=", card.id)
+      .where("active_run_id", "=", card.run.id),
     eventInsert(db, card.id, actor(user), reason, now),
-  ];
-  if (card.run) {
-    updates.push(
-      db
-        .updateTable("run_attempts")
-        .set({
-          status: "stalled",
-          ended_at: now,
-          updated_at: now,
-          error: reason,
-        })
-        .where("id", "=", card.run.id),
-    );
-  }
-  await executeBatch(env, updates);
+  ]);
 }
 
 async function appendEvent(
