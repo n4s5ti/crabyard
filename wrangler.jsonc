@@ -7,6 +7,13 @@
     "command": "node scripts/generate-assets.mjs",
   },
   "account_id": "91b59577e757131d68d55a471fe32aca",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "crabyard-ai",
+      "database_id": "0866ed65-a568-4d9f-a78a-aec41fe75e06",
+    },
+  ],
   "workers_dev": true,
   // Enable after crabyard.ai exists as a Cloudflare zone in this account:
   // "routes": [{ "pattern": "crabyard.ai", "custom_domain": true }],

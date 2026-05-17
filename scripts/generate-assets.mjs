@@ -6,7 +6,6 @@ const generatedPath = new URL("../src/generated.ts", import.meta.url);
 const distRoot = new URL("../dist/", import.meta.url);
 const distApp = new URL("../dist/app/", import.meta.url);
 const distDocs = new URL("../dist/docs/", import.meta.url);
-const distSpec = new URL("../dist/docs/spec/", import.meta.url);
 
 const [appHtml, specMarkdown] = await Promise.all([
   readFile(appPath, "utf8"),
@@ -23,16 +22,20 @@ await writeFile(
 
 if (process.argv.includes("--static")) {
   await rm(distRoot, { recursive: true, force: true });
-  await Promise.all([
-    mkdir(distApp, { recursive: true }),
-    mkdir(distDocs, { recursive: true }),
-    mkdir(distSpec, { recursive: true }),
-  ]);
-  await writeFile(new URL("../dist/index.html", import.meta.url), appHtml);
-  await writeFile(new URL("../dist/app/index.html", import.meta.url), appHtml);
-  await writeFile(new URL("../dist/docs/spec/index.html", import.meta.url), specHtml);
+  await Promise.all([mkdir(distApp, { recursive: true }), mkdir(distDocs, { recursive: true })]);
+  await writeFile(
+    new URL("../dist/_redirects", import.meta.url),
+    "/* https://crabyard.openclaw.ai/:splat 302\n",
+  );
+  await writeFile(new URL("../dist/index.html", import.meta.url), redirectHtml("/"));
+  await writeFile(new URL("../dist/app/index.html", import.meta.url), redirectHtml("/app/"));
   await writeFile(new URL("../dist/docs/spec.md", import.meta.url), specMarkdown);
   await writeFile(new URL("../dist/healthz", import.meta.url), "ok\n");
+}
+
+function redirectHtml(path) {
+  const target = `https://crabyard.openclaw.ai${path}`;
+  return `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=${target}"><title>Crabyard.ai</title><a href="${target}">Crabyard.ai</a>`;
 }
 
 function renderSpecPage(markdown) {

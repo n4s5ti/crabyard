@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS audit_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);

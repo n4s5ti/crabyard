@@ -151,6 +151,54 @@
         display: grid;
         grid-template-columns: 72px minmax(0, 1fr);
       }
+      body.locked .app,
+      body.locked .drawer {
+        display: none;
+      }
+      .login-screen {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .login-screen[hidden] {
+        display: none;
+      }
+      .login-panel {
+        width: min(420px, 100%);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow-lg);
+        padding: 24px;
+        display: grid;
+        gap: 16px;
+      }
+      .login-panel h1 {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.1;
+      }
+      .login-panel p {
+        margin: 0;
+        color: var(--muted);
+      }
+      .login-actions {
+        display: grid;
+        gap: 10px;
+      }
+      .banner {
+        display: none;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px 12px;
+        background: var(--panel-2);
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .banner.show {
+        display: block;
+      }
       .rail {
         position: sticky;
         top: 0;
@@ -244,7 +292,7 @@
 
       .toolbar {
         display: grid;
-        grid-template-columns: minmax(220px, 1fr) auto auto auto;
+        grid-template-columns: minmax(220px, 1fr) auto auto auto auto;
         gap: 9px;
         align-items: center;
         margin-bottom: 14px;
@@ -358,6 +406,10 @@
       .chip.merge {
         background: rgb(94 106 210 / 0.1);
         color: var(--primary);
+      }
+      .user-chip {
+        justify-self: end;
+        max-width: 190px;
       }
       .card p {
         margin: 0;
@@ -576,7 +628,24 @@
       }
     </style>
   </head>
-  <body>
+  <body class="locked">
+    <section class="login-screen" id="login-screen">
+      <form class="login-panel" id="token-login">
+        <div class="mark">CY</div>
+        <h1>Crabyard.ai</h1>
+        <p>Sign in to manage OpenClaw Codex runs, repo allowlists, and runtime policy.</p>
+        <div class="login-actions">
+          <button class="primary" id="github-login" type="button">Continue with GitHub</button>
+          <label
+            >Bootstrap token
+            <input id="token-input" type="password" autocomplete="current-password" />
+          </label>
+          <button type="submit">Use token</button>
+        </div>
+        <div class="banner" id="login-message"></div>
+      </form>
+    </section>
+
     <div class="app">
       <aside class="rail" aria-label="Primary">
         <div class="mark" title="Crabyard.ai">CY</div>
@@ -608,6 +677,7 @@
           </div>
           <button class="primary" id="new-card">New card</button>
           <button id="admin-button">Admin</button>
+          <button class="ghost user-chip" id="user-button">Signed out</button>
         </section>
 
         <section class="board" id="board" aria-label="Crabyard board"></section>
@@ -694,6 +764,11 @@
               <h3>Users and teams</h3>
               <div class="form-grid">
                 <input id="allow-input" class="full" placeholder="@login or @org/team" />
+                <select id="allow-role" class="full">
+                  <option value="maintainer">Maintainer</option>
+                  <option value="owner">Owner</option>
+                  <option value="viewer">Viewer</option>
+                </select>
                 <button id="add-allow" class="primary full">Add</button>
               </div>
               <div class="list" id="allow-list"></div>
@@ -741,81 +816,20 @@
 
     <script>
       const lanes = ["Todo", "Running", "Human Review", "Done"];
-      const storeKey = "crabyard:mvp:v2";
       let filter = "all";
       let activeRunId = null;
-
-      const seed = {
-        org: "OpenClaw",
-        cap: 20,
-        retention: "30",
-        merge: "guarded",
-        allow: ["@steipete", "@openclaw/maintainers"],
-        repos: ["openclaw/crabyard", "openclaw/clawsweeper", "openclaw/crabbox"],
-        cards: [
-          {
-            id: "CY-101",
-            title: "Wire admin allowlists",
-            prompt: "Build admin editing for users, teams, repos, runtime caps, and merge policy.",
-            repo: "openclaw/crabyard",
-            source: "Prompt",
-            runtime: "container",
-            policy: "open_pr",
-            lane: "Todo",
-            owner: "me",
-            createdAt: Date.now() - 1000 * 60 * 43,
-            logs: ["queued card CY-101", "repo gate pending"],
-          },
-          {
-            id: "CY-102",
-            title: "Crabbox manual attach path",
-            prompt:
-              "Expose watch and takeover affordances for a Codex CLI session with VNC eligibility.",
-            repo: "openclaw/crabbox",
-            source: "Issue",
-            runtime: "crabbox",
-            policy: "fix_until_green_and_merge",
-            lane: "Running",
-            owner: "me",
-            startedAt: Date.now() - 1000 * 60 * 9,
-            logs: ["lease acquired", "codex cli attached", "heartbeat ok", "streaming terminal"],
-          },
-          {
-            id: "CY-103",
-            title: "Review stale PR recovery",
-            prompt: "Validate required checks and route merge through guarded policy.",
-            repo: "openclaw/clawsweeper",
-            source: "PR",
-            runtime: "auto",
-            policy: "merge_when_green",
-            lane: "Human Review",
-            owner: "team",
-            createdAt: Date.now() - 1000 * 60 * 120,
-            logs: ["checks green", "head sha locked", "waiting for maintainer"],
-          },
-        ],
-      };
-
-      let state = loadState();
-
-      function loadState() {
-        try {
-          const raw = localStorage.getItem(storeKey);
-          return raw ? { ...seed, ...JSON.parse(raw) } : structuredClone(seed);
-        } catch {
-          return structuredClone(seed);
-        }
-      }
-
-      function saveState() {
-        localStorage.setItem(storeKey, JSON.stringify(state));
-      }
+      let state = { cards: [], allow: [], repos: [], cap: 20, retention: "30", merge: "guarded" };
+      let signedIn = false;
+      let authMethods = { github: false, token: false };
+      let stateRetryTimer = null;
 
       function render() {
         renderMetrics();
         renderBoard();
         renderAdmin();
         renderRepoSelect();
+        renderUser();
+        renderShellControls();
       }
 
       function renderMetrics() {
@@ -852,7 +866,8 @@
       }
 
       function visibleCards() {
-        if (filter === "mine") return state.cards.filter((card) => card.owner === "me");
+        const current = state.user?.login || state.user?.email || state.user?.subject;
+        if (filter === "mine") return state.cards.filter((card) => card.owner === current);
         if (filter === "hot") return state.cards.filter((card) => card.lane === "Running");
         return state.cards;
       }
@@ -878,6 +893,11 @@
           card.lane === "Running"
             ? `<span class="chip hot">live ${elapsed(card.startedAt)}</span>`
             : "";
+        const runActions = canMaintain()
+          ? `<button data-action="start" data-id="${card.id}">${card.lane === "Running" ? "Pulse" : "Start"}</button>
+          <button data-action="attach" data-id="${card.id}">Attach</button>
+          <button data-action="advance" data-id="${card.id}">Move</button>`
+          : `<button data-action="attach" data-id="${card.id}">Attach</button>`;
         return `<article class="card ${cls}">
         <div>
           <h3>${escapeHtml(card.title)}</h3>
@@ -891,9 +911,7 @@
           ${live}
         </div>
         <div class="card-actions">
-          <button data-action="start" data-id="${card.id}">${card.lane === "Running" ? "Pulse" : "Start"}</button>
-          <button data-action="attach" data-id="${card.id}">Attach</button>
-          <button data-action="advance" data-id="${card.id}">Move</button>
+          ${runActions}
         </div>
       </article>`;
       }
@@ -908,18 +926,65 @@
         document.getElementById("cap-input").value = state.cap;
         document.getElementById("retention-input").value = state.retention;
         document.getElementById("merge-input").value = state.merge;
-        renderList("allow-list", state.allow, "allow");
-        renderList("repo-list", state.repos, "repo");
+        renderList(
+          "allow-list",
+          state.allow.map((item) => ({
+            label: item.value + " - " + item.role,
+            value: item.value,
+          })),
+          "allow",
+        );
+        renderList(
+          "repo-list",
+          state.repos.map((repo) => ({ label: repo, value: repo })),
+          "repo",
+        );
+        const owner = state.user?.role === "owner";
+        document
+          .querySelectorAll(
+            "#admin-drawer input, #admin-drawer select, #admin-drawer button:not([data-close])",
+          )
+          .forEach((element) => {
+            element.disabled = !owner;
+          });
       }
 
       function renderList(id, items, kind) {
         document.getElementById(id).innerHTML = items
           .map(
             (item) => `
-        <div class="list-row"><span>${escapeHtml(item)}</span><button class="icon" data-remove="${kind}" data-value="${escapeHtml(item)}">x</button></div>
+        <div class="list-row"><span>${escapeHtml(item.label)}</span><button class="icon" data-remove="${kind}" data-value="${escapeHtml(item.value)}">x</button></div>
       `,
           )
           .join("");
+      }
+
+      function renderUser() {
+        const user = state.user;
+        const label = user
+          ? (user.login || user.email || user.subject) + " / " + user.role
+          : "Signed out";
+        document.getElementById("user-button").textContent = label;
+      }
+
+      function renderShellControls() {
+        document.getElementById("new-card").disabled = !canMaintain();
+        document.getElementById("admin-button").disabled = !canOwn();
+        document.querySelectorAll('[data-view="admin"]').forEach((button) => {
+          button.disabled = !canOwn();
+        });
+      }
+
+      function canMaintain() {
+        return roleRank(state.user?.role) >= roleRank("maintainer");
+      }
+
+      function canOwn() {
+        return roleRank(state.user?.role) >= roleRank("owner");
+      }
+
+      function roleRank(role) {
+        return { viewer: 1, maintainer: 2, owner: 3 }[role] || 0;
       }
 
       function openDrawer(id) {
@@ -941,44 +1006,16 @@
         });
       }
 
-      function startCard(id) {
-        const running = state.cards.filter((card) => card.lane === "Running").length;
-        const card = findCard(id);
-        if (!card) return;
-        const wasRunning = card.lane === "Running";
-        if (!state.repos.includes(card.repo)) {
-          card.logs.push("repo blocked by allowlist: " + card.repo);
-          saveState();
-          render();
-          return;
-        }
-        if (!wasRunning && running >= state.cap) {
-          card.logs.push("capacity blocked at cap " + state.cap);
-          saveState();
-          render();
-          return;
-        }
-        card.lane = "Running";
-        card.startedAt = wasRunning ? card.startedAt : Date.now();
-        card.logs.push(time() + " scheduler claimed " + card.repo);
-        card.logs.push(time() + " runtime=" + card.runtime + " policy=" + card.policy);
-        card.logs.push(time() + " heartbeat ok");
-        saveState();
-        render();
+      async function startCard(id) {
+        await cardAction(id, findCard(id)?.lane === "Running" ? "pulse" : "start");
       }
 
-      function advanceCard(id) {
-        const card = findCard(id);
-        if (!card) return;
-        const index = lanes.indexOf(card.lane);
-        card.lane = lanes[(index + 1) % lanes.length];
-        card.logs.push(time() + " moved to " + card.lane);
-        if (card.lane === "Running") card.startedAt = Date.now();
-        saveState();
-        render();
+      async function advanceCard(id) {
+        await cardAction(id, "advance");
       }
 
-      function attachCard(id) {
+      async function attachCard(id) {
+        await cardAction(id, "attach");
         activeRunId = id;
         const card = findCard(id);
         if (!card) return;
@@ -989,6 +1026,10 @@
       }
 
       function renderRunSide(card) {
+        const maintainerControls = canMaintain()
+          ? `<button class="primary" id="takeover">Take over</button>
+        <button id="stall">Mark stalled</button>`
+          : "";
         document.getElementById("run-side").innerHTML = `
         <h3>Session</h3>
         <div class="kv">
@@ -998,19 +1039,15 @@
           <span>State <strong>${card.lane}</strong></span>
           <span>VNC <strong>${card.runtime === "crabbox" ? "available" : "not available"}</strong></span>
         </div>
-        <button class="primary" id="takeover">Take over</button>
         <button id="watch">Watch</button>
-        <button id="stall">Mark stalled</button>
+        ${maintainerControls}
       `;
       }
 
-      function appendRun(message) {
-        const card = findCard(activeRunId);
-        if (!card) return;
-        card.logs.push(time() + " " + message);
+      async function appendRun(action) {
+        if (!activeRunId) return;
+        await cardAction(activeRunId, action);
         refreshActiveTerminal();
-        saveState();
-        render();
       }
 
       function refreshActiveTerminal() {
@@ -1032,14 +1069,6 @@
         return minutes + "m";
       }
 
-      function time() {
-        return new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        });
-      }
-
       function escapeHtml(value) {
         return String(value)
           .replaceAll("&", "&amp;")
@@ -1051,10 +1080,11 @@
       document.addEventListener("click", (event) => {
         const target = event.target.closest("button");
         if (!target) return;
+        if (target.disabled) return;
         if (target.dataset.close) closeDrawer(target.dataset.close);
         if (target.id === "new-card") openDrawer("card-drawer");
         if (target.dataset.view === "board") closeAllDrawers();
-        if (target.id === "admin-button" || target.dataset.view === "admin")
+        if ((target.id === "admin-button" || target.dataset.view === "admin") && canOwn())
           openDrawer("admin-drawer");
         if (target.dataset.view === "logs") {
           const live = state.cards.find((card) => card.lane === "Running") || state.cards[0];
@@ -1070,87 +1100,195 @@
         if (target.dataset.action === "start") startCard(target.dataset.id);
         if (target.dataset.action === "advance") advanceCard(target.dataset.id);
         if (target.dataset.action === "attach") attachCard(target.dataset.id);
-        if (target.dataset.remove === "allow")
-          state.allow = state.allow.filter((item) => item !== target.dataset.value);
-        if (target.dataset.remove === "repo")
-          state.repos = state.repos.filter((item) => item !== target.dataset.value);
-        if (target.dataset.remove) {
-          saveState();
-          render();
-        }
+        if (target.dataset.remove === "allow") removeAllow(target.dataset.value);
+        if (target.dataset.remove === "repo") removeRepo(target.dataset.value);
         if (target.id === "add-allow") {
           const input = document.getElementById("allow-input");
-          if (input.value.trim()) state.allow.push(input.value.trim());
+          const role = document.getElementById("allow-role").value;
+          if (input.value.trim()) addAllow(input.value.trim(), role);
           input.value = "";
-          saveState();
-          render();
         }
         if (target.id === "add-repo") {
           const input = document.getElementById("repo-input");
-          if (input.value.trim()) state.repos.push(input.value.trim());
+          if (input.value.trim()) addRepo(input.value.trim());
           input.value = "";
-          saveState();
-          render();
         }
         if (target.id === "save-policy") {
           const rawCap = Number(document.getElementById("cap-input").value);
-          state.cap = Number.isFinite(rawCap) ? Math.min(200, Math.max(1, rawCap)) : 20;
-          state.retention = document.getElementById("retention-input").value;
-          state.merge = document.getElementById("merge-input").value;
-          saveState();
-          render();
+          updatePolicy({
+            cap: Number.isFinite(rawCap) ? Math.min(200, Math.max(1, rawCap)) : 20,
+            retention: document.getElementById("retention-input").value,
+            merge: document.getElementById("merge-input").value,
+          });
         }
-        if (target.id === "takeover") appendRun("operator takeover granted");
-        if (target.id === "watch") appendRun("watch attached");
-        if (target.id === "stall") {
-          const card = findCard(activeRunId);
-          if (card) card.lane = "Human Review";
-          appendRun("stalled; workspace preserved");
-        }
+        if (target.id === "takeover") appendRun("takeover");
+        if (target.id === "watch") appendRun("watch");
+        if (target.id === "stall") appendRun("stall");
+        if (target.id === "user-button") logout();
       });
 
       document.getElementById("search").addEventListener("input", renderBoard);
 
-      document.getElementById("card-form").addEventListener("submit", (event) => {
+      document.getElementById("card-form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const data = new FormData(event.currentTarget);
-        const id = "CY-" + String(100 + state.cards.length + 1);
-        state.cards.unshift({
-          id,
-          title: data.get("title"),
-          prompt: data.get("prompt"),
-          repo: data.get("repo"),
-          source: data.get("source"),
-          runtime: data.get("runtime"),
-          policy: data.get("policy"),
-          lane: "Todo",
-          owner: "me",
-          createdAt: Date.now(),
-          logs: [time() + " card created", time() + " repo allowlist ok"],
+        await api("/api/cards", {
+          method: "POST",
+          body: {
+            title: data.get("title"),
+            prompt: data.get("prompt"),
+            repo: data.get("repo"),
+            source: data.get("source"),
+            runtime: data.get("runtime"),
+            policy: data.get("policy"),
+          },
         });
         event.currentTarget.reset();
         closeDrawer("card-drawer");
-        saveState();
-        render();
+        await loadState();
       });
 
+      document.getElementById("token-login").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const token = document.getElementById("token-input").value;
+        try {
+          await api("/api/login/token", { method: "POST", body: { token }, authOptional: true });
+          document.getElementById("token-input").value = "";
+          await loadState();
+        } catch (error) {
+          showLogin(String(error.message || error));
+        }
+      });
+
+      document.getElementById("github-login").addEventListener("click", () => {
+        location.href = "/login/github";
+      });
+
+      async function loadState() {
+        try {
+          state = await api("/api/state", { authOptional: true });
+          if (stateRetryTimer) {
+            clearTimeout(stateRetryTimer);
+            stateRetryTimer = null;
+          }
+          authMethods = state.auth || authMethods;
+          signedIn = true;
+          document.body.classList.remove("locked");
+          document.getElementById("login-screen").hidden = true;
+          render();
+          refreshActiveTerminal();
+        } catch (error) {
+          if (error.status === 401 || error.status === 403) {
+            await loadAuthMethods();
+            signedIn = false;
+            document.body.classList.add("locked");
+            document.getElementById("login-screen").hidden = false;
+            showLogin(error.message === "unauthorized" ? "" : error.message);
+            return;
+          }
+          showLogin(error.message);
+          if (!stateRetryTimer) {
+            stateRetryTimer = setTimeout(() => {
+              stateRetryTimer = null;
+              loadState();
+            }, 5000);
+          }
+        }
+      }
+
+      async function loadAuthMethods() {
+        try {
+          const result = await api("/api/auth", { authOptional: true });
+          authMethods = result.auth || authMethods;
+        } catch {
+          authMethods = { github: false, token: true };
+        }
+        document.getElementById("github-login").disabled = !authMethods.github;
+        document.getElementById("token-input").disabled = !authMethods.token;
+        document.querySelector("#token-login button[type='submit']").disabled = !authMethods.token;
+        if (!authMethods.github) {
+          document.getElementById("github-login").textContent = "GitHub OAuth not configured";
+        }
+      }
+
+      async function cardAction(id, action) {
+        const result = await api(`/api/cards/${encodeURIComponent(id)}/actions`, {
+          method: "POST",
+          body: { action },
+        });
+        replaceCard(result.card);
+        render();
+        if (activeRunId === id) refreshActiveTerminal();
+      }
+
+      async function addAllow(value, role) {
+        state = await api("/api/admin/allow", { method: "POST", body: { value, role } });
+        render();
+      }
+
+      async function removeAllow(value) {
+        state = await api(`/api/admin/allow/${encodeURIComponent(value)}`, { method: "DELETE" });
+        render();
+      }
+
+      async function addRepo(repo) {
+        state = await api("/api/admin/repos", { method: "POST", body: { repo } });
+        render();
+      }
+
+      async function removeRepo(repo) {
+        state = await api(`/api/admin/repos/${encodeURIComponent(repo)}`, { method: "DELETE" });
+        render();
+      }
+
+      async function updatePolicy(body) {
+        state = await api("/api/admin/policy", { method: "PUT", body });
+        render();
+      }
+
+      async function logout() {
+        await api("/api/logout", { method: "POST", authOptional: true });
+        await loadState();
+      }
+
+      async function api(path, options = {}) {
+        const init = {
+          method: options.method || "GET",
+          credentials: "same-origin",
+          headers: { accept: "application/json" },
+        };
+        if (options.body) {
+          init.headers["content-type"] = "application/json";
+          init.body = JSON.stringify(options.body);
+        }
+        const response = await fetch(path, init);
+        const text = await response.text();
+        const body = text ? JSON.parse(text) : {};
+        if (!response.ok) {
+          const error = new Error(
+            response.status === 401 ? "unauthorized" : body.error || response.statusText,
+          );
+          error.status = response.status;
+          throw error;
+        }
+        return body;
+      }
+
+      function replaceCard(card) {
+        state.cards = state.cards.map((item) => (item.id === card.id ? card : item));
+      }
+
+      function showLogin(message) {
+        const box = document.getElementById("login-message");
+        box.textContent = message;
+        box.classList.toggle("show", Boolean(message));
+      }
+
       setInterval(() => {
-        let activeTerminalChanged = false;
-        state.cards
-          .filter((card) => card.lane === "Running")
-          .forEach((card) => {
-            if (Math.random() > 0.55) {
-              card.logs.push(time() + " heartbeat ok");
-              activeTerminalChanged ||= card.id === activeRunId;
-            }
-          });
-        saveState();
-        if (activeTerminalChanged) refreshActiveTerminal();
-        renderMetrics();
-        renderBoard();
+        if (signedIn) loadState();
       }, 15000);
 
-      render();
+      loadState();
     </script>
   </body>
 </html>

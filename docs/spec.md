@@ -1,6 +1,6 @@
 # Crabyard.ai Spec
 
-Status: draft
+Status: draft, initial deployed control plane backed by Cloudflare Worker and D1
 
 Crabyard.ai is a Cloudflare-native control plane for running Codex sessions in cloud workspaces. It gives OpenClaw maintainers a Linear-like board where each card represents an intent, a live run, and its durable history.
 
@@ -234,6 +234,9 @@ Expected flow:
 Login:
 
 - GitHub OAuth.
+- Bootstrap token login for first admin setup and break-glass recovery.
+- GitHub OAuth sessions are short-lived verified sessions; OAuth tokens are not stored in D1.
+- Bootstrap sessions are short-lived and bound to the current bootstrap token hash.
 
 Access gate:
 
@@ -246,6 +249,7 @@ Admin UI:
 - Manage allowed repos.
 - Manage org runtime caps.
 - Manage merge permissions.
+- Writes persist through the Worker API to D1; browser storage is not authoritative.
 
 Repo gate:
 
