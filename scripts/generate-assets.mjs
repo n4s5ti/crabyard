@@ -2,16 +2,20 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 
 const appPath = new URL("../src/app.html", import.meta.url);
 const specPath = new URL("../docs/spec.md", import.meta.url);
+const logoPath = new URL("../src/assets/crabyard-logo.png", import.meta.url);
 const generatedPath = new URL("../src/generated.ts", import.meta.url);
 const distRoot = new URL("../dist/", import.meta.url);
 const distApp = new URL("../dist/app/", import.meta.url);
 const distDocs = new URL("../dist/docs/", import.meta.url);
 
-const [appHtml, specMarkdown] = await Promise.all([
+const [appHtmlSource, specMarkdown, logoBytes] = await Promise.all([
   readFile(appPath, "utf8"),
   readFile(specPath, "utf8"),
+  readFile(logoPath),
 ]);
 
+const logoDataUrl = `data:image/png;base64,${logoBytes.toString("base64")}`;
+const appHtml = appHtmlSource.replaceAll("__CRABYARD_LOGO__", logoDataUrl);
 const specHtml = renderSpecPage(specMarkdown);
 
 await mkdir(new URL("../src/", import.meta.url), { recursive: true });

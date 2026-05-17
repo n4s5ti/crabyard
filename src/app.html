@@ -214,15 +214,18 @@
       .mark {
         width: 40px;
         height: 40px;
-        border-radius: 8px;
+        border-radius: 10px;
         display: grid;
         place-items: center;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        background: var(--primary);
-        color: #fff;
         margin-bottom: 8px;
-        font-size: 14px;
+        background: linear-gradient(145deg, #101827, #17243a);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      .mark img {
+        width: 34px;
+        height: 34px;
+        object-fit: contain;
       }
       .rail button {
         width: 40px;
@@ -631,7 +634,7 @@
   <body class="locked">
     <section class="login-screen" id="login-screen">
       <form class="login-panel" id="token-login">
-        <div class="mark">CY</div>
+        <div class="mark"><img src="__CRABYARD_LOGO__" alt="" /></div>
         <h1>Crabyard.ai</h1>
         <p>Sign in to manage OpenClaw Codex runs, repo allowlists, and runtime policy.</p>
         <div class="login-actions">
@@ -648,7 +651,7 @@
 
     <div class="app">
       <aside class="rail" aria-label="Primary">
-        <div class="mark" title="Crabyard.ai">CY</div>
+        <div class="mark" title="Crabyard.ai"><img src="__CRABYARD_LOGO__" alt="" /></div>
         <button class="active" data-view="board" title="Board">B</button>
         <button data-view="admin" title="Admin">A</button>
         <button data-view="logs" title="Logs">L</button>
@@ -1203,12 +1206,12 @@
         } catch {
           authMethods = { github: false, token: true };
         }
-        document.getElementById("github-login").disabled = !authMethods.github;
+        const githubLogin = document.getElementById("github-login");
+        githubLogin.hidden = !authMethods.github;
+        githubLogin.disabled = !authMethods.github;
+        githubLogin.textContent = "Continue with GitHub";
         document.getElementById("token-input").disabled = !authMethods.token;
         document.querySelector("#token-login button[type='submit']").disabled = !authMethods.token;
-        if (!authMethods.github) {
-          document.getElementById("github-login").textContent = "GitHub OAuth not configured";
-        }
       }
 
       async function cardAction(id, action) {
