@@ -132,6 +132,11 @@
         transform: translateY(0);
         box-shadow: var(--shadow);
       }
+      button[disabled] {
+        cursor: progress;
+        opacity: 0.64;
+        transform: none;
+      }
       button.primary {
         border-color: var(--primary);
         background: var(--primary);
@@ -2500,44 +2505,60 @@
 
       document.getElementById("card-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const data = new FormData(event.currentTarget);
-        await api("/api/cards", {
-          method: "POST",
-          body: {
-            title: data.get("title"),
-            prompt: data.get("prompt"),
-            repo: data.get("repo"),
-            source: data.get("source"),
-            runtime: data.get("runtime"),
-            policy: data.get("policy"),
-          },
-        });
-        event.currentTarget.reset();
-        closeDrawer("card-drawer");
-        await loadState();
+        const form = event.currentTarget;
+        const submit = form.querySelector('button[type="submit"]');
+        const label = submit?.textContent;
+        setFormBusy(form, true, "Creating...");
+        try {
+          const data = new FormData(form);
+          await api("/api/cards", {
+            method: "POST",
+            body: {
+              title: data.get("title"),
+              prompt: data.get("prompt"),
+              repo: data.get("repo"),
+              source: data.get("source"),
+              runtime: data.get("runtime"),
+              policy: data.get("policy"),
+            },
+          });
+          form.reset();
+          closeDrawer("card-drawer");
+          await loadState();
+        } finally {
+          setFormBusy(form, false, label);
+        }
       });
 
       document.getElementById("interactive-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const data = new FormData(event.currentTarget);
-        const result = await api("/api/interactive-sessions", {
-          method: "POST",
-          body: {
-            repo: data.get("repo"),
-            branch: data.get("branch"),
-            runtime: data.get("runtime"),
-            command: data.get("command"),
-            prompt: data.get("prompt"),
-          },
-        });
-        replaceInteractiveSession(result.session);
-        event.currentTarget.reset();
-        event.currentTarget.elements.branch.value = "main";
-        event.currentTarget.elements.command.value = "codex";
-        closeDrawer("interactive-drawer");
-        focusedSessionId = result.session.id;
-        render();
-        openSessionGrid(result.session.id);
+        const form = event.currentTarget;
+        const submit = form.querySelector('button[type="submit"]');
+        const label = submit?.textContent;
+        setFormBusy(form, true, "Provisioning...");
+        try {
+          const data = new FormData(form);
+          const result = await api("/api/interactive-sessions", {
+            method: "POST",
+            body: {
+              repo: data.get("repo"),
+              branch: data.get("branch"),
+              runtime: data.get("runtime"),
+              command: data.get("command"),
+              prompt: data.get("prompt"),
+            },
+          });
+          replaceInteractiveSession(result.session);
+          form.reset();
+          form.elements.branch.value = "main";
+          form.elements.command.value = "codex";
+          closeDrawer("interactive-drawer");
+          focusedSessionId = result.session.id;
+          render();
+          openSessionGrid(result.session.id);
+        } finally {
+          setFormBusy(form, false, label);
+        }
       });
 
       document.getElementById("token-login").addEventListener("submit", async (event) => {
@@ -2730,6 +2751,16 @@
           throw error;
         }
         return body;
+      }
+
+      function setFormBusy(form, busy, label) {
+        form.setAttribute("aria-busy", busy ? "true" : "false");
+        for (const element of form.elements) {
+          if (element.type !== "button" && element.type !== "submit") continue;
+          element.disabled = busy;
+        }
+        const submit = form.querySelector('button[type="submit"]');
+        if (submit && label) submit.textContent = label;
       }
 
       function replaceCard(card) {
