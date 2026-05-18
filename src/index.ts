@@ -1526,7 +1526,15 @@ if [ -s .crabyard-initial-prompt.txt ]; then
 fi
 if [ -n "\${OPENAI_API_KEY:-}" ]; then
   mkdir -p "$HOME/.codex"
-  printf 'preferred_auth_method = "apikey"\\n' > "$HOME/.codex/config.toml"
+  cat > "$HOME/.codex/config.toml" <<'EOF'
+forced_login_method = "api"
+preferred_auth_method = "apikey"
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[projects.${JSON.stringify(workdir)}]
+trust_level = "trusted"
+EOF
   printf '%s' "$OPENAI_API_KEY" | codex login --with-api-key >/dev/null 2>&1 || true
 else
   printf 'OPENAI_API_KEY is not configured for this session.\\n'

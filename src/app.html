@@ -1982,6 +1982,7 @@
       }
 
       function renderInteractiveSessionControls(session) {
+        if (isOptimisticInteractiveSession(session)) return "";
         const stopped = ["stopped", "expired", "failed"].includes(session.status);
         const stopButton =
           canMaintain() && !stopped
@@ -1991,6 +1992,10 @@
           ? ""
           : `<button data-interactive-attach="${session.id}">Attach</button>`;
         return `${attachButton}${stopButton}`;
+      }
+
+      function isOptimisticInteractiveSession(session) {
+        return session.kind === "interactive" && String(session.id).startsWith("LOCAL-");
       }
 
       function sessionMetaHtml(session) {
@@ -2123,7 +2128,7 @@
             fit.fit();
             if (typeof fit.observeResize === "function") fit.observeResize();
           }
-          term.write(text);
+          term.write(live ? liveTerminalConnectingText(session) : text);
           const host = { mount, term, fit, text, live, socket: null, dataSub: null };
           if (live && typeof term.onData === "function") {
             host.dataSub = term.onData((data) => sendTerminalInput(host, data));
@@ -2150,13 +2155,18 @@
         );
       }
 
-      function terminalSocketUrl(session) {
+      function terminalSocketUrl(session, term) {
         const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        return `${protocol}//${location.host}/api/interactive-sessions/${encodeURIComponent(session.id)}/pty`;
+        const url = new URL(
+          `${protocol}//${location.host}/api/interactive-sessions/${encodeURIComponent(session.id)}/pty`,
+        );
+        if (term?.cols) url.searchParams.set("cols", String(term.cols));
+        if (term?.rows) url.searchParams.set("rows", String(term.rows));
+        return url.toString();
       }
 
       function connectTerminalSocket(session, host, term) {
-        const socket = new WebSocket(terminalSocketUrl(session));
+        const socket = new WebSocket(terminalSocketUrl(session, term));
         socket.binaryType = "arraybuffer";
         host.socket = socket;
         setTerminalStatus(session.id, "Connecting PTY");
@@ -2169,7 +2179,9 @@
             handleTerminalControlMessage(session.id, event.data);
             return;
           }
-          const bytes = new Uint8Array(await event.data.arrayBuffer());
+          const buffer =
+            event.data instanceof ArrayBuffer ? event.data : await event.data.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
           term.write(bytes);
         });
         socket.addEventListener("close", (event) => {
@@ -2193,6 +2205,16 @@
       function sendTerminalInput(host, data) {
         if (host.socket?.readyState !== WebSocket.OPEN) return;
         host.socket.send(typeof data === "string" ? new TextEncoder().encode(data) : data);
+      }
+
+      function liveTerminalConnectingText(session) {
+        return [
+          `Connecting live Codex PTY...`,
+          `repo ${session.repo}`,
+          `branch ${session.branch}`,
+          `runtime ${session.runtime}`,
+          "",
+        ].join("\r\n");
       }
 
       function isStaleTerminalMount(session, mount, mountEpoch) {
@@ -2535,9 +2557,15 @@
         const form = event.currentTarget;
         const submit = form.querySelector('button[type="submit"]');
         const label = submit?.textContent;
+        const data = new FormData(form);
+        const localSession = optimisticInteractiveSession(data);
+        replaceInteractiveSession(localSession);
+        closeDrawer("interactive-drawer");
+        focusedSessionId = localSession.id;
+        render();
+        openSessionGrid(localSession.id);
         setFormBusy(form, true, "Provisioning...");
         try {
-          const data = new FormData(form);
           const result = await api("/api/interactive-sessions", {
             method: "POST",
             body: {
@@ -2548,14 +2576,25 @@
               prompt: data.get("prompt"),
             },
           });
+          removeInteractiveSession(localSession.id);
           replaceInteractiveSession(result.session);
           form.reset();
           form.elements.branch.value = "main";
           form.elements.command.value = "codex";
-          closeDrawer("interactive-drawer");
           focusedSessionId = result.session.id;
           render();
           openSessionGrid(result.session.id);
+        } catch (error) {
+          const message = error.message || "session creation failed";
+          replaceInteractiveSession({
+            ...localSession,
+            status: "failed",
+            lastEvent: message,
+            logs: [message],
+          });
+          render();
+          openSessionGrid(localSession.id);
+          showLogin(message);
         } finally {
           setFormBusy(form, false, label);
         }
@@ -2772,6 +2811,39 @@
         state.interactiveSessions = sessions.some((item) => item.id === session.id)
           ? sessions.map((item) => (item.id === session.id ? session : item))
           : [session, ...sessions];
+      }
+
+      function removeInteractiveSession(id) {
+        state.interactiveSessions = (state.interactiveSessions || []).filter(
+          (session) => session.id !== id,
+        );
+      }
+
+      function optimisticInteractiveSession(data) {
+        const now = Date.now();
+        const repo = String(data.get("repo") || "openclaw/openclaw");
+        const branch = String(data.get("branch") || "main");
+        const runtime = String(data.get("runtime") || "container");
+        return {
+          id: `LOCAL-${now}`,
+          repo,
+          branch,
+          runtime,
+          command: String(data.get("command") || "codex"),
+          prompt: String(data.get("prompt") || ""),
+          owner: state.user?.login || "local",
+          status: "provisioning",
+          leaseId: null,
+          attachUrl: null,
+          vncUrl: null,
+          lastEvent: "Provisioning Cloudflare Sandbox...",
+          createdAt: now,
+          updatedAt: now,
+          lastSeenAt: now,
+          stoppedAt: null,
+          logs: ["Provisioning Cloudflare Sandbox...", "Starting Codex CLI..."],
+          title: `${repo} · ${branch}`,
+        };
       }
 
       function showLogin(message) {
