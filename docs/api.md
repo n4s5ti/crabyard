@@ -216,6 +216,47 @@ Returns all run attempts for a card, newest first.
 }
 ```
 
+## Interactive Sessions
+
+### POST /api/interactive-sessions
+
+Maintainer+. Creates a standalone Codex CLI workspace request.
+
+```json
+{
+  "repo": "openclaw/openclaw",
+  "branch": "main",
+  "runtime": "crabbox",
+  "command": "codex",
+  "prompt": "Investigate flaky release CI"
+}
+```
+
+Fields:
+
+- `repo`: required, enabled repo.
+- `branch`: optional, default `main`.
+- `runtime`: optional `crabbox` or `container`, default `crabbox`.
+- `command`: optional, default `codex`.
+- `prompt`: optional initial context note.
+
+If `CRABYARD_INTERACTIVE_PROVISION_URL` is configured, the Worker posts the request to that adapter and records returned `status`, `leaseId`, `attachUrl`, `vncUrl`, and `message`. Without an adapter the session is stored as `pending_adapter`.
+
+### POST /api/interactive-sessions/:id/actions
+
+Actions:
+
+- `attach`: viewer, mark seen/attached and return the session.
+- `stop`: maintainer, mark stopped.
+
+Response:
+
+```json
+{
+  "session": {}
+}
+```
+
 ## Admin
 
 Owner role required.

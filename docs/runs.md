@@ -80,12 +80,19 @@ Manual `stall` marks the card Human Review and preserves the active run record w
 Attach opens a fullscreen Ghostty WASM grid. Current behavior:
 
 - Shows one or more Codex session tiles.
+- Includes standalone interactive Codex CLI sessions created from New session.
 - Uses the local `ghostty-web` bundle served by the Worker.
 - Replays D1 event logs into the terminal surface.
 - Falls back to a text terminal if Ghostty cannot initialize.
 - Supports focused fullscreen card view.
 
 Live PTY byte streaming and interactive stdin are not wired yet. The Take over action records `controlIntent = "takeover"` and operator only for active runs with takeover capability.
+
+## Interactive CLI Sessions
+
+Maintainers can create a standalone Codex CLI session without making a board card. The Worker stores the requested repo, branch, runtime, command, owner, attach/VNC URLs, status, and event log in D1. The default runtime is `crabbox` so a provision adapter can return both terminal and VNC attach URLs.
+
+If `CRABYARD_INTERACTIVE_PROVISION_URL` is not set, new sessions stay `pending_adapter` and remain visible in the Ghostty grid. If it is set, Crabyard posts the session request to that endpoint with optional bearer auth from `CRABYARD_INTERACTIVE_PROVISION_TOKEN`; the response can set `status`, `leaseId`, `attachUrl`, `vncUrl`, and `message`.
 
 ## Run APIs
 

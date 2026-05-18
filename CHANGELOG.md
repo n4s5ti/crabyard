@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add standalone interactive Codex CLI sessions with Ghostty grid attach and an external runtime provision hook.
 - Document the real deployed control-plane status, runtime adapter boundary, workflow config, and test stack.
 - Close open side drawers with Escape.
 - Preserve completed run attempt status when operators mark stale cards stalled.

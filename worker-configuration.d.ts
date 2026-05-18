@@ -5,4 +5,6 @@ interface Env {
   GITHUB_CLIENT_SECRET?: string;
   GITHUB_ORG?: string;
   GITHUB_TOKEN?: string;
+  CRABYARD_INTERACTIVE_PROVISION_URL?: string;
+  CRABYARD_INTERACTIVE_PROVISION_TOKEN?: string;
 }

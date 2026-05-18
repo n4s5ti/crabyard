@@ -389,9 +389,9 @@
       }
       .status-strip {
         display: grid;
-        grid-template-columns: repeat(4, minmax(96px, 1fr));
+        grid-template-columns: repeat(5, minmax(88px, 1fr));
         gap: 8px;
-        min-width: 470px;
+        min-width: 560px;
       }
       .metric {
         border: 1px solid var(--line);
@@ -424,7 +424,7 @@
 
       .toolbar {
         display: grid;
-        grid-template-columns: minmax(220px, 1fr) auto auto auto auto;
+        grid-template-columns: minmax(220px, 1fr) auto auto auto auto auto;
         gap: 12px;
         align-items: center;
         margin-bottom: 24px;
@@ -887,6 +887,9 @@
         font-size: 12px;
         font-weight: 700;
       }
+      .session-controls button.danger {
+        color: #fca5a5;
+      }
       .session-terminal-wrap {
         min-height: 0;
         background: #101827;
@@ -1224,6 +1227,7 @@
             <button data-filter="hot">Live</button>
           </div>
           <button class="primary" id="new-card">New card</button>
+          <button id="new-session">New session</button>
           <button id="admin-button">Admin</button>
           <button class="ghost user-chip" id="user-button">Signed out</button>
         </section>
@@ -1282,6 +1286,48 @@
             <div class="actions full">
               <button type="button" data-close="card-drawer">Cancel</button>
               <button class="primary" type="submit">Create</button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </div>
+
+    <div class="drawer" id="interactive-drawer" aria-hidden="true">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>New Codex session</h2>
+          <button class="icon" data-close="interactive-drawer" aria-label="Close new session">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="panel-body">
+          <form id="interactive-form" class="form-grid">
+            <label
+              >Repo
+              <select name="repo" id="interactive-repo-select"></select>
+            </label>
+            <label
+              >Branch
+              <input name="branch" value="main" placeholder="main" />
+            </label>
+            <label
+              >Runtime
+              <select name="runtime">
+                <option>crabbox</option>
+                <option>container</option>
+              </select>
+            </label>
+            <label
+              >Command
+              <input name="command" value="codex" placeholder="codex" />
+            </label>
+            <label class="full"
+              >Prompt (optional)
+              <textarea name="prompt" placeholder="Initial note for the interactive box"></textarea>
+            </label>
+            <div class="actions full">
+              <button type="button" data-close="interactive-drawer">Cancel</button>
+              <button class="primary" type="submit">Create session</button>
             </div>
           </form>
         </div>
@@ -1406,6 +1452,7 @@
       let activeRunId = null;
       let state = {
         cards: [],
+        interactiveSessions: [],
         allow: [],
         repos: [],
         workflows: [],
@@ -1444,10 +1491,16 @@
         const active = state.cards.filter((card) => card.lane === "Running").length;
         const queue = state.cards.filter((card) => card.lane === "Todo").length;
         const review = state.cards.filter((card) => card.lane === "Human Review").length;
+        const cli = (state.interactiveSessions || []).filter((session) =>
+          ["provisioning", "pending_adapter", "ready", "attached", "detached"].includes(
+            session.status,
+          ),
+        ).length;
         document.getElementById("metrics").innerHTML = [
           ["Active", active + " / " + state.cap],
           ["Queue", queue],
           ["Review", review],
+          ["CLI", cli],
           ["Logs", state.retention + "d"],
         ]
           .map(
@@ -1562,10 +1615,15 @@
       }
 
       function renderRepoSelect() {
-        const select = document.getElementById("repo-select");
         const repos = preferredRepos(state.repos);
-        select.innerHTML = repos.map((repo) => `<option>${escapeHtml(repo)}</option>`).join("");
-        if (repos.includes("openclaw/openclaw")) select.value = "openclaw/openclaw";
+        for (const select of [
+          document.getElementById("repo-select"),
+          document.getElementById("interactive-repo-select"),
+        ]) {
+          if (!select) continue;
+          select.innerHTML = repos.map((repo) => `<option>${escapeHtml(repo)}</option>`).join("");
+          if (repos.includes("openclaw/openclaw")) select.value = "openclaw/openclaw";
+        }
       }
 
       function renderRefPreview() {
@@ -1680,6 +1738,7 @@
 
       function renderShellControls() {
         document.getElementById("new-card").disabled = !canMaintain();
+        document.getElementById("new-session").disabled = !canMaintain();
         document.getElementById("admin-button").disabled = !canOwn();
         document.querySelectorAll('[data-view="admin"]').forEach((button) => {
           button.disabled = !canOwn();
@@ -1773,6 +1832,26 @@
         openSessionGrid();
       }
 
+      async function attachInteractiveSession(id) {
+        const result = await api(`/api/interactive-sessions/${encodeURIComponent(id)}/actions`, {
+          method: "POST",
+          body: { action: "attach" },
+        });
+        replaceInteractiveSession(result.session);
+        focusedSessionId = id;
+        render();
+        openSessionGrid(id);
+      }
+
+      async function stopInteractiveSession(id) {
+        const result = await api(`/api/interactive-sessions/${encodeURIComponent(id)}/actions`, {
+          method: "POST",
+          body: { action: "stop" },
+        });
+        replaceInteractiveSession(result.session);
+        render();
+      }
+
       async function openRunDetails(id) {
         closeDrawer("sessions-drawer");
         activeRunId = id;
@@ -1807,93 +1886,149 @@
         const grid = document.getElementById("session-grid");
         if (!grid) return;
         if (!document.getElementById("sessions-drawer").classList.contains("open")) return;
-        const focusedCard = focusedSessionId ? findCard(focusedSessionId) : null;
-        const cards = focusedCard ? [focusedCard] : sessionCards();
-        grid.classList.toggle("focus-mode", Boolean(focusedCard));
-        document.getElementById("show-all-sessions").hidden = !focusedCard;
-        if (!cards.length) {
+        const focusedSession = focusedSessionId ? findSessionItem(focusedSessionId) : null;
+        const sessions = focusedSession ? [focusedSession] : sessionItems();
+        grid.classList.toggle("focus-mode", Boolean(focusedSession));
+        document.getElementById("show-all-sessions").hidden = !focusedSession;
+        if (!sessions.length) {
           terminalEpoch += 1;
           disposeMissingTerminals(new Set());
           grid.dataset.sessionKey = "empty";
           grid.innerHTML = `<div class="session-empty">No Codex sessions yet</div>`;
           return;
         }
-        const ids = new Set(cards.map((card) => card.id));
-        const sessionKey = `${focusedCard ? "focus" : "grid"}:${cards.map((card) => card.id).join("|")}`;
+        const ids = new Set(sessions.map((session) => session.id));
+        const sessionKey = `${focusedSession ? "focus" : "grid"}:${sessions
+          .map(sessionRenderKey)
+          .join("|")}`;
         disposeMissingTerminals(ids);
         if (grid.dataset.sessionKey !== sessionKey) {
           terminalEpoch += 1;
-          grid.innerHTML = cards.map(renderSessionCell).join("");
+          grid.innerHTML = sessions.map(renderSessionCell).join("");
           grid.dataset.sessionKey = sessionKey;
         } else {
-          for (const card of cards) refreshSessionCell(card);
+          for (const session of sessions) refreshSessionCell(session);
         }
         requestAnimationFrame(hydrateSessionTerminals);
       }
 
-      function sessionCards() {
-        return [...state.cards].sort((left, right) => {
+      function sessionItems() {
+        const cardItems = state.cards.map((card) => ({ ...card, kind: "card" }));
+        const interactiveItems = (state.interactiveSessions || []).map((session) => ({
+          ...session,
+          kind: "interactive",
+          title: `${session.repo} · ${session.branch}`,
+          lane: session.status,
+          policy: "interactive",
+        }));
+        return [...interactiveItems, ...cardItems].sort((left, right) => {
           const laneRank = { Running: 0, "Human Review": 1, Todo: 2, Done: 3 };
-          const leftLane = laneRank[left.lane] ?? 4;
-          const rightLane = laneRank[right.lane] ?? 4;
+          const leftLane = left.kind === "interactive" ? 0 : (laneRank[left.lane] ?? 4);
+          const rightLane = right.kind === "interactive" ? 0 : (laneRank[right.lane] ?? 4);
           if (leftLane !== rightLane) return leftLane - rightLane;
           return (
-            Number(right.startedAt || right.createdAt || 0) -
-            Number(left.startedAt || left.createdAt || 0)
+            Number(right.lastSeenAt || right.updatedAt || right.startedAt || right.createdAt || 0) -
+            Number(left.lastSeenAt || left.updatedAt || left.startedAt || left.createdAt || 0)
           );
         });
       }
 
-      function renderSessionCell(card) {
-        const takeoverButton =
-          canMaintain() && hasRunCapability(card, "takeover")
-            ? `<button data-session-takeover="${card.id}">Take over</button>`
-            : "";
-        const maintainerControls = `<button data-session-watch="${card.id}">Watch</button>${takeoverButton}`;
+      function sessionRenderKey(session) {
+        return session.kind === "interactive"
+          ? `${session.id}:${session.status}`
+          : `${session.id}:${session.lane}:${session.run?.status || ""}`;
+      }
+
+      function renderSessionCell(session) {
+        const controls =
+          session.kind === "interactive"
+            ? renderInteractiveSessionControls(session)
+            : renderCardSessionControls(session);
         const focusButton = focusedSessionId
           ? `<button data-session-unfocus>Grid</button>`
-          : `<button data-session-focus="${card.id}">Full</button>`;
+          : `<button data-session-focus="${session.id}">Full</button>`;
         return `<article class="session-cell">
           <header class="session-cell-head">
             <div class="session-cell-title">
-              <strong data-session-title="${escapeHtml(card.id)}" title="${escapeHtml(card.title)}">${escapeHtml(card.title)}</strong>
-              <div class="session-meta" data-session-meta="${escapeHtml(card.id)}">${sessionMetaHtml(card)}</div>
+              <strong data-session-title="${escapeHtml(session.id)}" title="${escapeHtml(session.title)}">${escapeHtml(session.title)}</strong>
+              <div class="session-meta" data-session-meta="${escapeHtml(session.id)}">${sessionMetaHtml(session)}</div>
             </div>
             <div class="session-controls">
               ${focusButton}
-              <button data-session-details="${card.id}">Details</button>
-              ${maintainerControls}
+              ${controls}
             </div>
           </header>
           <div class="session-terminal-wrap">
-            <div class="ghostty-terminal" data-card-id="${escapeHtml(card.id)}" aria-label="${escapeHtml(card.id)} terminal"></div>
+            <div class="ghostty-terminal" data-session-id="${escapeHtml(session.id)}" aria-label="${escapeHtml(session.id)} terminal"></div>
           </div>
           <footer class="session-cell-foot">
-            <span data-terminal-status="${escapeHtml(card.id)}">Ghostty WASM</span>
-            <span data-session-runtime-label="${escapeHtml(card.id)}">${escapeHtml(runtimeCapabilityLabel(card))}</span>
+            <span data-terminal-status="${escapeHtml(session.id)}">Ghostty WASM</span>
+            <span data-session-runtime-label="${escapeHtml(session.id)}">${escapeHtml(runtimeCapabilityLabel(session))}</span>
           </footer>
         </article>`;
       }
 
-      function sessionMetaHtml(card) {
-        const running = card.lane === "Running";
+      function renderCardSessionControls(card) {
+        const takeoverButton =
+          canMaintain() && hasRunCapability(card, "takeover")
+            ? `<button data-session-takeover="${card.id}">Take over</button>`
+            : "";
+        return `<button data-session-details="${card.id}">Details</button><button data-session-watch="${card.id}">Watch</button>${takeoverButton}`;
+      }
+
+      function renderInteractiveSessionControls(session) {
+        const stopped = ["stopped", "expired", "failed"].includes(session.status);
+        const stopButton =
+          canMaintain() && !stopped
+            ? `<button class="danger" data-interactive-stop="${session.id}">Stop</button>`
+            : "";
+        const attachButton = stopped
+          ? ""
+          : `<button data-interactive-attach="${session.id}">Attach</button>`;
+        return `${attachButton}${stopButton}`;
+      }
+
+      function sessionMetaHtml(session) {
+        if (session.kind === "interactive") {
+          const live = ["provisioning", "ready", "attached"].includes(session.status);
+          return `
+            <span class="chip">${escapeHtml(session.id)}</span>
+            <span class="chip">${escapeHtml(session.repo)}</span>
+            <span class="chip">${escapeHtml(session.runtime)}</span>
+            <span class="chip merge">${escapeHtml(session.status)}</span>
+            <span class="chip">${escapeHtml(session.branch)}</span>
+            ${live ? `<span class="chip hot">seen ${elapsed(session.lastSeenAt || session.updatedAt)}</span>` : ""}
+          `;
+        }
+        const running = session.lane === "Running";
         return `
-          <span class="chip">${escapeHtml(card.id)}</span>
-          <span class="chip">${escapeHtml(card.repo)}</span>
-          <span class="chip">${escapeHtml(card.run?.runtime || card.runtime)}</span>
-          ${card.run ? `<span class="chip">${escapeHtml(card.run.status)}</span>` : ""}
-          <span class="chip merge">${escapeHtml(card.policy)}</span>
-          ${running ? `<span class="chip hot">live ${elapsed(card.run?.lastHeartbeatAt || card.startedAt)}</span>` : `<span class="chip">${escapeHtml(card.lane)}</span>`}
+          <span class="chip">${escapeHtml(session.id)}</span>
+          <span class="chip">${escapeHtml(session.repo)}</span>
+          <span class="chip">${escapeHtml(session.run?.runtime || session.runtime)}</span>
+          ${session.run ? `<span class="chip">${escapeHtml(session.run.status)}</span>` : ""}
+          <span class="chip merge">${escapeHtml(session.policy)}</span>
+          ${running ? `<span class="chip hot">live ${elapsed(session.run?.lastHeartbeatAt || session.startedAt)}</span>` : `<span class="chip">${escapeHtml(session.lane)}</span>`}
         `;
       }
 
-      function runRuntime(card) {
-        return card.run?.runtime || card.runtime;
+      function runRuntime(session) {
+        return session.run?.runtime || session.runtime;
       }
 
-      function runCapabilities(card) {
-        if (card.run?.capabilities) return card.run.capabilities;
-        const crabbox = runRuntime(card) === "crabbox";
+      function runCapabilities(session) {
+        if (session.kind === "interactive") {
+          const crabbox = session.runtime === "crabbox";
+          return {
+            terminal: true,
+            takeover: false,
+            vnc: crabbox,
+            desktop: crabbox,
+            logs: true,
+            artifacts: false,
+          };
+        }
+        if (session.run?.capabilities) return session.run.capabilities;
+        const crabbox = runRuntime(session) === "crabbox";
         return {
           terminal: true,
           takeover: crabbox,
@@ -1904,64 +2039,68 @@
         };
       }
 
-      function hasRunCapability(card, name) {
-        if (name === "takeover" && !isActiveRun(card)) return false;
-        return runCapabilities(card)[name] === true;
+      function hasRunCapability(session, name) {
+        if (name === "takeover" && !isActiveRun(session)) return false;
+        return runCapabilities(session)[name] === true;
       }
 
-      function isActiveRun(card) {
-        return ["queued", "leasing", "running"].includes(card.run?.status);
+      function isActiveRun(session) {
+        return session.kind === "interactive"
+          ? ["provisioning", "pending_adapter", "ready", "attached", "detached"].includes(
+              session.status,
+            )
+          : ["queued", "leasing", "running"].includes(session.run?.status);
       }
 
-      function runtimeCapabilityLabel(card) {
-        const caps = runCapabilities(card);
+      function runtimeCapabilityLabel(session) {
+        const caps = runCapabilities(session);
         if (caps.vnc) return "VNC eligible";
         if (caps.terminal) return "terminal";
-        return runRuntime(card);
+        return runRuntime(session);
       }
 
-      function refreshSessionCell(card) {
-        const id = CSS.escape(card.id);
+      function refreshSessionCell(session) {
+        const id = CSS.escape(session.id);
         const title = document.querySelector(`[data-session-title="${id}"]`);
         const meta = document.querySelector(`[data-session-meta="${id}"]`);
         const runtime = document.querySelector(`[data-session-runtime-label="${id}"]`);
         if (title) {
-          title.textContent = card.title;
-          title.title = card.title;
+          title.textContent = session.title;
+          title.title = session.title;
         }
-        if (meta) meta.innerHTML = sessionMetaHtml(card);
-        if (runtime) runtime.textContent = runtimeCapabilityLabel(card);
+        if (meta) meta.innerHTML = sessionMetaHtml(session);
+        if (runtime) runtime.textContent = runtimeCapabilityLabel(session);
       }
 
       async function hydrateSessionTerminals() {
-        const mounts = document.querySelectorAll(".ghostty-terminal[data-card-id]");
+        const mounts = document.querySelectorAll(".ghostty-terminal[data-session-id]");
         for (const mount of mounts) {
-          const card = findCard(mount.dataset.cardId);
-          if (card) await mountGhosttyTerminal(card, mount);
+          const session = findSessionItem(mount.dataset.sessionId);
+          if (session) await mountGhosttyTerminal(session, mount);
         }
       }
 
-      async function mountGhosttyTerminal(card, mount) {
-        const existing = terminalHosts.get(card.id);
-        const text = terminalText(card);
+      async function mountGhosttyTerminal(session, mount) {
+        const existing = terminalHosts.get(session.id);
+        const text = terminalText(session);
         if (existing?.mount === mount) {
           if (existing.text !== text) {
             updateMountedTerminal(existing, text);
             existing.text = text;
           }
-          setTerminalStatus(card.id, existing.term ? "Ghostty WASM" : "Text fallback");
+          setTerminalStatus(session.id, existing.term ? "Ghostty WASM" : "Text fallback");
           return;
         }
-        disposeTerminal(card.id);
+        disposeTerminal(session.id);
         const mountEpoch = terminalEpoch;
         try {
           const mod = await loadGhosttyModule();
-          if (isStaleTerminalMount(card, mount, mountEpoch)) return;
+          if (isStaleTerminalMount(session, mount, mountEpoch)) return;
           if (!mod?.Terminal) throw new Error("Ghostty module missing Terminal");
           mount.innerHTML = "";
           const term = new mod.Terminal({
             disableStdin: true,
-            fontSize: focusedSessionId === card.id ? 14 : 13,
+            fontSize: focusedSessionId === session.id ? 14 : 13,
             theme: { background: "#101827", foreground: "#e5e7eb" },
           });
           const fit = mod.FitAddon ? new mod.FitAddon() : null;
@@ -1972,23 +2111,23 @@
             if (typeof fit.observeResize === "function") fit.observeResize();
           }
           term.write(text);
-          terminalHosts.set(card.id, { mount, term, fit, text });
-          setTerminalStatus(card.id, "Ghostty WASM");
+          terminalHosts.set(session.id, { mount, term, fit, text });
+          setTerminalStatus(session.id, "Ghostty WASM");
         } catch (error) {
-          if (isStaleTerminalMount(card, mount, mountEpoch)) return;
+          if (isStaleTerminalMount(session, mount, mountEpoch)) return;
           mount.innerHTML = `<pre class="terminal-fallback">${escapeHtml(text)}</pre>`;
-          terminalHosts.set(card.id, { mount, term: null, text });
-          setTerminalStatus(card.id, "Text fallback");
+          terminalHosts.set(session.id, { mount, term: null, text });
+          setTerminalStatus(session.id, "Text fallback");
           console.warn("Ghostty terminal unavailable", error);
         }
       }
 
-      function isStaleTerminalMount(card, mount, mountEpoch) {
+      function isStaleTerminalMount(session, mount, mountEpoch) {
         const drawer = document.getElementById("sessions-drawer");
         return (
           mountEpoch !== terminalEpoch ||
           !mount.isConnected ||
-          mount.dataset.cardId !== card.id ||
+          mount.dataset.sessionId !== session.id ||
           !drawer.classList.contains("open")
         );
       }
@@ -2019,9 +2158,31 @@
         return ghosttyModulePromise;
       }
 
-      function terminalText(card) {
+      function terminalText(session) {
+        if (session.kind === "interactive") {
+          const header = [
+            `$ ${session.command || "codex"}`,
+            `repo ${session.repo}`,
+            `branch ${session.branch}`,
+            `runtime ${session.runtime}`,
+            `status ${session.status}`,
+          ];
+          if (session.attachUrl) header.push(`attach ${session.attachUrl}`);
+          if (session.vncUrl) header.push(`vnc ${session.vncUrl}`);
+          if (session.status === "pending_adapter") {
+            header.push("runtime adapter not configured yet");
+          }
+          if (session.prompt) header.push("", session.prompt);
+          const logs =
+            Array.isArray(session.logs) && session.logs.length
+              ? session.logs
+              : ["Waiting for interactive workspace..."];
+          return [...header, "", ...logs].join("\r\n") + "\r\n";
+        }
         const logs =
-          Array.isArray(card.logs) && card.logs.length ? card.logs : ["Codex session ready."];
+          Array.isArray(session.logs) && session.logs.length
+            ? session.logs
+            : ["Codex session ready."];
         return logs.join("\r\n") + "\r\n";
       }
 
@@ -2136,6 +2297,26 @@
         return state.cards.find((card) => card.id === id);
       }
 
+      function findInteractiveSession(id) {
+        return (state.interactiveSessions || []).find((session) => session.id === id);
+      }
+
+      function findSessionItem(id) {
+        if (!id) return null;
+        const interactive = findInteractiveSession(id);
+        if (interactive) {
+          return {
+            ...interactive,
+            kind: "interactive",
+            title: `${interactive.repo} · ${interactive.branch}`,
+            lane: interactive.status,
+            policy: "interactive",
+          };
+        }
+        const card = findCard(id);
+        return card ? { ...card, kind: "card" } : null;
+      }
+
       function preferredRepos(repos) {
         return [...repos].sort((left, right) => {
           if (left === "openclaw/openclaw") return -1;
@@ -2171,12 +2352,12 @@
         if (target.disabled) return;
         if (target.dataset.close) closeDrawer(target.dataset.close);
         if (target.id === "new-card") openDrawer("card-drawer");
+        if (target.id === "new-session") openDrawer("interactive-drawer");
         if (target.dataset.view === "board") closeAllDrawers();
         if ((target.id === "admin-button" || target.dataset.view === "admin") && canOwn())
           openDrawer("admin-drawer");
         if (target.dataset.view === "logs") {
-          const live = state.cards.find((card) => card.lane === "Running") || state.cards[0];
-          if (live) focusedSessionId = live.id;
+          focusedSessionId = null;
           openSessionGrid();
         }
         if (target.dataset.filter) {
@@ -2200,6 +2381,9 @@
         if (target.dataset.sessionDetails) openRunDetails(target.dataset.sessionDetails);
         if (target.dataset.sessionWatch) cardAction(target.dataset.sessionWatch, "watch");
         if (target.dataset.sessionTakeover) cardAction(target.dataset.sessionTakeover, "takeover");
+        if (target.dataset.interactiveAttach)
+          attachInteractiveSession(target.dataset.interactiveAttach);
+        if (target.dataset.interactiveStop) stopInteractiveSession(target.dataset.interactiveStop);
         if (target.dataset.createRef) createRefCard(Number(target.dataset.createRef));
         if (target.dataset.remove === "allow") removeAllow(target.dataset.value);
         if (target.dataset.remove === "repo") removeRepo(target.dataset.value);
@@ -2260,6 +2444,29 @@
         event.currentTarget.reset();
         closeDrawer("card-drawer");
         await loadState();
+      });
+
+      document.getElementById("interactive-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        const result = await api("/api/interactive-sessions", {
+          method: "POST",
+          body: {
+            repo: data.get("repo"),
+            branch: data.get("branch"),
+            runtime: data.get("runtime"),
+            command: data.get("command"),
+            prompt: data.get("prompt"),
+          },
+        });
+        replaceInteractiveSession(result.session);
+        event.currentTarget.reset();
+        event.currentTarget.elements.branch.value = "main";
+        event.currentTarget.elements.command.value = "codex";
+        closeDrawer("interactive-drawer");
+        focusedSessionId = result.session.id;
+        render();
+        openSessionGrid(result.session.id);
       });
 
       document.getElementById("token-login").addEventListener("submit", async (event) => {
@@ -2456,6 +2663,13 @@
 
       function replaceCard(card) {
         state.cards = state.cards.map((item) => (item.id === card.id ? card : item));
+      }
+
+      function replaceInteractiveSession(session) {
+        const sessions = state.interactiveSessions || [];
+        state.interactiveSessions = sessions.some((item) => item.id === session.id)
+          ? sessions.map((item) => (item.id === session.id ? session : item))
+          : [session, ...sessions];
       }
 
       function showLogin(message) {

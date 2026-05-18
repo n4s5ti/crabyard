@@ -9,6 +9,7 @@ Crabyard gives OpenClaw maintainers a Linear-like board where each card represen
 - **Board-based workflow.** Create cards from prompts, GitHub issues, or PRs. Track them through Todo, Running, Human Review, and Done lanes.
 - **Issue/PR lookup.** Type `#123` in search to preview matching GitHub issues or PRs across enabled OpenClaw repos and create a card from the match.
 - **Codex run control.** Start durable run attempts, track heartbeats, watch the Ghostty WASM session grid, and take over only when the selected runtime advertises that capability.
+- **Interactive CLI sessions.** Start a standalone Codex CLI workspace for manual cloud work and attach it in the same fullscreen Ghostty grid.
 - **Diff previews.** Card tiles show changed files and totals; the run drawer shows a compact Codiff-style patch view.
 - **Multi-runtime policy.** Auto-select between the Container and Crabbox adapter surfaces based on card overrides, repo workflow defaults, and task requirements.
 - **Allowlist controls.** Restrict access to OpenClaw org members and specific repos through admin-managed allowlists.
@@ -18,9 +19,9 @@ Crabyard gives OpenClaw maintainers a Linear-like board where each card represen
 ## Architecture
 
 - **Cloudflare Workers** for the app, API, auth, GitHub lookup, and docs routes.
-- **D1 + Kysely** for typed persistence: users, sessions, allowlists, repos, cards, events, run attempts, diffs, and repo workflow evaluations.
+- **D1 + Kysely** for typed persistence: users, sessions, allowlists, repos, cards, events, run attempts, interactive sessions, diffs, and repo workflow evaluations.
 - **Ghostty WebAssembly** for the fullscreen attach grid and run log replay.
-- **Runtime adapter descriptors** for Container and Crabbox selection, capability display, and guarded takeover.
+- **Runtime adapter descriptors** for Container and Crabbox selection, capability display, interactive provision handoff, and guarded takeover.
 - **GitHub API** for OAuth, org/team membership, and issue/PR previews across enabled repos.
 
 Container leasing, Crabbox PTY/VNC transport, R2 archival, Durable Object fanout, and merge automation are adapter targets, not faked in the current Worker.
@@ -57,6 +58,12 @@ Add users/teams to the allowlist and enable repos:
 - Click "Attach" to open the fullscreen Ghostty WASM session grid
 - Click "Take over" only when the active run advertises takeover support
 - Click "Watch" for read-only stream
+
+### 5. Start Interactive CLI
+
+- Click "New session" to request a standalone Codex CLI workspace
+- Default runtime is Crabbox so VNC can be attached when the provision adapter returns a URL
+- Without `CRABYARD_INTERACTIVE_PROVISION_URL`, sessions are stored as `pending_adapter` and still visible in the grid
 
 ## Features
 
@@ -133,6 +140,8 @@ Configure these in Cloudflare Workers dashboard:
 - `GITHUB_CLIENT_SECRET` – GitHub OAuth app secret (optional)
 - `GITHUB_ORG` – GitHub org for membership check (default: `openclaw`)
 - `GITHUB_TOKEN` – GitHub token for all enabled repo issue/PR previews and private repo `CRABYARD.md` refreshes (optional; public/default repo paths work without it)
+- `CRABYARD_INTERACTIVE_PROVISION_URL` – Optional adapter endpoint for standalone Codex CLI workspaces
+- `CRABYARD_INTERACTIVE_PROVISION_TOKEN` – Optional bearer token sent to the interactive provision endpoint
 
 ### Verify Deployment
 

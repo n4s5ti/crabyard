@@ -30,6 +30,8 @@ type RuntimeEnv = Env & {
   GITHUB_CLIENT_SECRET?: string;
   GITHUB_TOKEN?: string;
   GITHUB_ORG?: string;
+  CRABYARD_INTERACTIVE_PROVISION_URL?: string;
+  CRABYARD_INTERACTIVE_PROVISION_TOKEN?: string;
 };
 
 type User = {
@@ -176,6 +178,54 @@ type RunAttempt = {
   error: string | null;
 };
 
+type InteractiveSessionStatus =
+  | "provisioning"
+  | "pending_adapter"
+  | "ready"
+  | "attached"
+  | "detached"
+  | "stopped"
+  | "expired"
+  | "failed";
+
+type InteractiveSession = {
+  id: string;
+  repo: string;
+  branch: string;
+  runtime: "crabbox" | "container";
+  command: string;
+  prompt: string;
+  owner: string;
+  status: InteractiveSessionStatus;
+  leaseId: string | null;
+  attachUrl: string | null;
+  vncUrl: string | null;
+  lastEvent: string;
+  createdAt: number;
+  updatedAt: number;
+  lastSeenAt: number;
+  stoppedAt: number | null;
+  logs: string[];
+};
+
+type InteractiveProvisionRequest = {
+  id: string;
+  repo: string;
+  branch: string;
+  runtime: "crabbox" | "container";
+  command: string;
+  prompt: string;
+  owner: string;
+};
+
+type InteractiveProvisionResult = {
+  status: InteractiveSessionStatus;
+  leaseId: string | null;
+  attachUrl: string | null;
+  vncUrl: string | null;
+  message: string;
+};
+
 type ChangedFile = {
   path: string;
   oldPath?: string;
@@ -273,6 +323,25 @@ type RunAttemptTable = {
   error: string | null;
 };
 
+type InteractiveSessionTable = {
+  id: string;
+  repo: string;
+  branch: string;
+  runtime: "crabbox" | "container";
+  command: string;
+  prompt: string;
+  owner: string;
+  status: InteractiveSessionStatus;
+  lease_id: string | null;
+  attach_url: string | null;
+  vnc_url: string | null;
+  last_event: string;
+  created_at: number;
+  updated_at: number;
+  last_seen_at: number;
+  stopped_at: number | null;
+};
+
 type RepoWorkflowTable = {
   repo: string;
   status: WorkflowStatus;
@@ -293,6 +362,14 @@ type EventTable = {
   created_at: number;
 };
 
+type InteractiveSessionEventTable = {
+  id: Generated<number>;
+  session_id: string;
+  actor: string;
+  message: string;
+  created_at: number;
+};
+
 type AuditEventTable = {
   id: Generated<number>;
   actor: string;
@@ -308,6 +385,8 @@ type Database = {
   sessions: SessionTable;
   cards: CardTable;
   run_attempts: RunAttemptTable;
+  interactive_sessions: InteractiveSessionTable;
+  interactive_session_events: InteractiveSessionEventTable;
   repo_workflows: RepoWorkflowTable;
   events: EventTable;
   audit_events: AuditEventTable;
@@ -325,6 +404,16 @@ const githubSessionSeconds = 60 * 15;
 const lanes = ["Todo", "Running", "Human Review", "Done"];
 const preferredRepo = "openclaw/openclaw";
 const activeRunStatuses: readonly RunStatus[] = ["queued", "leasing", "running"];
+const interactiveSessionStatuses: readonly InteractiveSessionStatus[] = [
+  "provisioning",
+  "pending_adapter",
+  "ready",
+  "attached",
+  "detached",
+  "stopped",
+  "expired",
+  "failed",
+];
 const runtimeOptions = ["auto", "container", "crabbox"] as const;
 const mergePolicyOptions = ["open_pr", "merge_when_green", "fix_until_green_and_merge"] as const;
 const defaultStallMs = 5 * 60 * 1000;
@@ -537,6 +626,28 @@ async function api(request: Request, env: RuntimeEnv): Promise<Response> {
   if (request.method === "GET" && url.pathname === "/api/github/refs") {
     requireRole(user, "maintainer");
     return json(await searchGitHubRefs(request, env));
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/interactive-sessions") {
+    requireRole(user, "maintainer");
+    return json(await createInteractiveSession(request, env, user), { status: 201 });
+  }
+
+  const interactiveSessionMatch = url.pathname.match(
+    /^\/api\/interactive-sessions\/([^/]+)\/actions$/,
+  );
+  if (request.method === "POST" && interactiveSessionMatch) {
+    const body = await readJson<{ action?: string }>(request);
+    const action = body.action ?? "";
+    requireRole(user, action === "attach" ? "viewer" : "maintainer");
+    return json(
+      await mutateInteractiveSession(
+        env,
+        user,
+        decodeURIComponent(interactiveSessionMatch[1] ?? ""),
+        action,
+      ),
+    );
   }
 
   if (request.method === "POST" && url.pathname === "/api/cards") {
@@ -760,13 +871,14 @@ async function requireUser(request: Request, env: RuntimeEnv): Promise<User> {
 async function readState(env: RuntimeEnv, user: User): Promise<Record<string, unknown>> {
   await reconcileStalledRuns(env, Date.now());
   const db = database(env);
-  const [settings, allow, repos, cards, workflows] = await Promise.all([
+  const [settings, allow, repos, cards, interactiveSessions, workflows] = await Promise.all([
     readSettings(env),
     user.role === "owner"
       ? db.selectFrom("allow_entries").select(["value", "role"]).orderBy("value").execute()
       : Promise.resolve([]),
     db.selectFrom("repos").select("repo").where("enabled", "=", 1).orderBy("repo").execute(),
     readCards(env),
+    readInteractiveSessions(env),
     user.role === "owner" ? readWorkflowSummaries(env) : Promise.resolve([]),
   ]);
   const repoNames = sortRepos(repos.map((row) => row.repo));
@@ -782,6 +894,221 @@ async function readState(env: RuntimeEnv, user: User): Promise<Record<string, un
     repos: repoNames,
     workflows,
     cards,
+    interactiveSessions,
+  };
+}
+
+async function createInteractiveSession(
+  request: Request,
+  env: RuntimeEnv,
+  user: User,
+): Promise<{ session: InteractiveSession }> {
+  const body = await readJson<{
+    repo?: string;
+    branch?: string;
+    runtime?: string;
+    command?: string;
+    prompt?: string;
+  }>(request);
+  const repo = normalizeRepo(body.repo);
+  if (!repo) throw badRequest("repo is required");
+  await requireRepo(env, repo);
+  const branch = clean(body.branch, 120) || "main";
+  const runtime = oneOf(body.runtime, ["crabbox", "container"], "crabbox") as
+    | "crabbox"
+    | "container";
+  const command = clean(body.command, 240) || "codex";
+  const prompt = clean(body.prompt, 4000);
+  const owner = actor(user);
+  const now = Date.now();
+  const db = database(env);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const id = await nextInteractiveSessionId(env);
+    try {
+      await db
+        .insertInto("interactive_sessions")
+        .values({
+          id,
+          repo,
+          branch,
+          runtime,
+          command,
+          prompt,
+          owner,
+          status: "provisioning",
+          lease_id: null,
+          attach_url: null,
+          vnc_url: null,
+          last_event: "interactive workspace requested",
+          created_at: now,
+          updated_at: now,
+          last_seen_at: now,
+          stopped_at: null,
+        })
+        .execute();
+      await appendInteractiveSessionEvent(env, id, user, "interactive workspace requested", now);
+      const provisioned = await provisionInteractiveSession(env, {
+        id,
+        repo,
+        branch,
+        runtime,
+        command,
+        prompt,
+        owner,
+      });
+      if (provisioned) {
+        await db
+          .updateTable("interactive_sessions")
+          .set({
+            status: provisioned.status,
+            lease_id: provisioned.leaseId,
+            attach_url: provisioned.attachUrl,
+            vnc_url: provisioned.vncUrl,
+            last_event: provisioned.message,
+            updated_at: now + 1,
+          })
+          .where("id", "=", id)
+          .execute();
+        await appendInteractiveSessionEvent(env, id, user, provisioned.message, now + 1);
+      } else {
+        await db
+          .updateTable("interactive_sessions")
+          .set({
+            status: "pending_adapter",
+            last_event: "waiting for interactive runtime adapter",
+            updated_at: now + 1,
+          })
+          .where("id", "=", id)
+          .execute();
+        await appendInteractiveSessionEvent(
+          env,
+          id,
+          user,
+          "waiting for interactive runtime adapter",
+          now + 1,
+        );
+      }
+      await audit(
+        env,
+        user,
+        `interactive session created ${id} repo=${repo} runtime=${runtime}`,
+        now,
+      );
+      return { session: (await readInteractiveSession(env, id)) as InteractiveSession };
+    } catch (error) {
+      if (!isConstraintError(error) || attempt === 2) throw error;
+    }
+  }
+  throw new Error("failed to allocate interactive session id");
+}
+
+async function mutateInteractiveSession(
+  env: RuntimeEnv,
+  user: User,
+  id: string,
+  action: string,
+): Promise<{ session: InteractiveSession }> {
+  const session = await readInteractiveSession(env, id);
+  if (!session) throw notFound("interactive session not found");
+  const now = Date.now();
+  if (action === "attach") {
+    if (["expired", "failed", "stopped"].includes(session.status)) {
+      throw badRequest(`session is ${session.status}`);
+    }
+    const nextStatus =
+      session.status === "ready" || session.status === "detached" ? "attached" : session.status;
+    const message =
+      session.status === "pending_adapter"
+        ? "attach requested; runtime adapter pending"
+        : session.status === "provisioning"
+          ? "attach requested; workspace provisioning"
+          : "interactive terminal attached";
+    await database(env)
+      .updateTable("interactive_sessions")
+      .set({
+        status: nextStatus,
+        last_seen_at: now,
+        updated_at: now,
+        last_event: message,
+      })
+      .where("id", "=", id)
+      .where("status", "!=", "stopped")
+      .execute();
+    await appendInteractiveSessionEvent(env, id, user, message, now);
+    return { session: (await readInteractiveSession(env, id)) as InteractiveSession };
+  }
+
+  if (action === "stop") {
+    await database(env)
+      .updateTable("interactive_sessions")
+      .set({
+        status: "stopped",
+        stopped_at: now,
+        updated_at: now,
+        last_event: "interactive workspace stopped",
+      })
+      .where("id", "=", id)
+      .where("status", "!=", "stopped")
+      .execute();
+    await appendInteractiveSessionEvent(env, id, user, "interactive workspace stopped", now);
+    await audit(env, user, `interactive session stopped ${id}`, now);
+    return { session: (await readInteractiveSession(env, id)) as InteractiveSession };
+  }
+
+  throw badRequest("unknown action");
+}
+
+async function provisionInteractiveSession(
+  env: RuntimeEnv,
+  session: InteractiveProvisionRequest,
+): Promise<InteractiveProvisionResult | null> {
+  if (!env.CRABYARD_INTERACTIVE_PROVISION_URL) return null;
+  let response: Response;
+  try {
+    const headers = new Headers({ "content-type": "application/json" });
+    if (env.CRABYARD_INTERACTIVE_PROVISION_TOKEN) {
+      headers.set("authorization", `Bearer ${env.CRABYARD_INTERACTIVE_PROVISION_TOKEN}`);
+    }
+    response = await fetch(env.CRABYARD_INTERACTIVE_PROVISION_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(session),
+    });
+  } catch (error) {
+    return {
+      status: "failed",
+      leaseId: null,
+      attachUrl: null,
+      vncUrl: null,
+      message: `interactive provision failed: ${clean(String(error), 240)}`,
+    };
+  }
+  if (!response.ok) {
+    return {
+      status: "failed",
+      leaseId: null,
+      attachUrl: null,
+      vncUrl: null,
+      message: `interactive provision failed: HTTP ${response.status}`,
+    };
+  }
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  const status = optionalOneOf(body.status, interactiveSessionStatuses);
+  if (!status) {
+    return {
+      status: "failed",
+      leaseId: null,
+      attachUrl: null,
+      vncUrl: null,
+      message: "interactive provision failed: invalid adapter response",
+    };
+  }
+  return {
+    status,
+    leaseId: clean(body.leaseId ?? body.lease_id, 240) || null,
+    attachUrl: clean(body.attachUrl ?? body.attach_url, 1000) || null,
+    vncUrl: clean(body.vncUrl ?? body.vnc_url, 1000) || null,
+    message: clean(body.message, 500) || `interactive workspace ${status}`,
   };
 }
 
@@ -1528,6 +1855,80 @@ async function readRunsForCard(env: RuntimeEnv, cardId: string): Promise<RunAtte
   return rows.map(runAttempt);
 }
 
+async function readInteractiveSessions(env: RuntimeEnv): Promise<InteractiveSession[]> {
+  const rows = await database(env)
+    .selectFrom("interactive_sessions")
+    .selectAll()
+    .orderBy("updated_at", "desc")
+    .limit(80)
+    .execute();
+  if (!rows.length) return [];
+  const logs = await readInteractiveSessionLogs(
+    env,
+    rows.map((row) => row.id),
+  );
+  return rows.map((row) => interactiveSession(row, logs.get(row.id) ?? []));
+}
+
+async function readInteractiveSession(
+  env: RuntimeEnv,
+  id: string,
+): Promise<InteractiveSession | null> {
+  const row = await database(env)
+    .selectFrom("interactive_sessions")
+    .selectAll()
+    .where("id", "=", id)
+    .executeTakeFirst();
+  if (!row) return null;
+  const logs = await readInteractiveSessionLogs(env, [id]);
+  return interactiveSession(row, logs.get(id) ?? []);
+}
+
+async function readInteractiveSessionLogs(
+  env: RuntimeEnv,
+  ids: string[],
+): Promise<Map<string, string[]>> {
+  const uniqueIds = [...new Set(ids)].filter(Boolean);
+  if (!uniqueIds.length) return new Map();
+  const eventRows = (
+    await sql<{ session_id: string; message: string; created_at: number }>`
+      SELECT session_id, message, created_at
+      FROM (
+        SELECT session_id, message, created_at, id,
+          row_number() OVER (PARTITION BY session_id ORDER BY created_at DESC, id DESC) AS rank
+        FROM interactive_session_events
+        WHERE session_id IN (${sql.join(uniqueIds)})
+      )
+      WHERE rank <= 80
+      ORDER BY session_id ASC, created_at ASC, id ASC
+    `.execute(database(env))
+  ).rows;
+  const logs = new Map<string, string[]>();
+  for (const row of eventRows) {
+    const line = `${new Date(row.created_at).toLocaleTimeString("en-GB")} ${row.message}`;
+    logs.set(row.session_id, [...(logs.get(row.session_id) ?? []), line]);
+  }
+  return logs;
+}
+
+async function appendInteractiveSessionEvent(
+  env: RuntimeEnv,
+  id: string,
+  user: User,
+  message: string,
+  now = Date.now(),
+): Promise<void> {
+  await database(env)
+    .insertInto("interactive_session_events")
+    .values({
+      session_id: id,
+      actor: actor(user),
+      message: clean(message, 1000),
+      created_at: now,
+    })
+    .execute();
+}
+
 async function readSettings(env: RuntimeEnv): Promise<Record<string, string>> {
   const rows = await database(env).selectFrom("settings").select(["key", "value"]).execute();
   return Object.fromEntries(rows.map((row) => [row.key, row.value]));
@@ -1614,6 +2015,15 @@ async function nextRunAttempt(env: RuntimeEnv, cardId: string): Promise<number> 
     .where("card_id", "=", cardId)
     .executeTakeFirst();
   return (row?.max_attempt ?? 0) + 1;
+}
+
+async function nextInteractiveSessionId(env: RuntimeEnv): Promise<string> {
+  const row = await database(env)
+    .selectFrom("interactive_sessions")
+    .select(sql<number | null>`max(CAST(substr(id, 4) AS INTEGER))`.as("max_id"))
+    .where("id", "like", "IS-%")
+    .executeTakeFirst();
+  return `IS-${String((row?.max_id ?? 100) + 1)}`;
 }
 
 async function requireRepo(env: RuntimeEnv, repo: string): Promise<void> {
@@ -1951,6 +2361,28 @@ function runAttempt(row: RunAttemptTable): RunAttempt {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     error: row.error,
+  };
+}
+
+function interactiveSession(row: InteractiveSessionTable, logs: string[]): InteractiveSession {
+  return {
+    id: row.id,
+    repo: row.repo,
+    branch: row.branch,
+    runtime: row.runtime,
+    command: row.command,
+    prompt: row.prompt,
+    owner: row.owner,
+    status: row.status,
+    leaseId: row.lease_id,
+    attachUrl: row.attach_url,
+    vncUrl: row.vnc_url,
+    lastEvent: row.last_event,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    lastSeenAt: row.last_seen_at,
+    stoppedAt: row.stopped_at,
+    logs,
   };
 }
 

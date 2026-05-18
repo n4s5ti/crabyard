@@ -16,8 +16,9 @@ const productName = "Crabyard";
 const productTagline = "OpenClaw Codex run control plane";
 const productDescription =
   "Crabyard.ai is a Cloudflare Worker control plane for OpenClaw Codex cards and run attempts — prompt cards, repo gates, durable run attempts, issue/PR previews, workflow policy, and attachable Ghostty WASM session views.";
-  "A single Go CLI for Gmail, Calendar, Drive, Docs, Sheets, Slides, Forms, Apps Script, Contacts, Tasks, and Workspace admin — built for terminals, scripts, CI, and coding agents.";
 const brewInstall = "brew install gogcli";
+const codePlaceholder = String.fromCharCode(0);
+const codePlaceholderPattern = new RegExp(`${codePlaceholder}(\\d+)${codePlaceholder}`, "g");
 
 const sections = [
   ["Start", ["index.md", "quickstart.md", "architecture.md"]],
@@ -59,7 +60,8 @@ const nav = sections
   .filter((section) => section.pages.length);
 
 const sectionByRel = new Map();
-for (const section of nav) for (const page of section.pages) sectionByRel.set(page.rel, section.name);
+for (const section of nav)
+  for (const page of section.pages) sectionByRel.set(page.rel, section.name);
 const orderedPages = nav.flatMap((s) => s.pages);
 
 for (const page of pages) {
@@ -87,31 +89,34 @@ function llmsTxt() {
   const origin = docsOrigin();
   const source = docsSourceUrl();
   const name = typeof productName !== "undefined" ? productName : path.basename(root);
-  const description = typeof productDescription !== "undefined" ? productDescription : `${name} documentation index.`;
+  const description =
+    typeof productDescription !== "undefined" ? productDescription : `${name} documentation index.`;
   const install = docsInstallHint();
-  const docPages = docsLlmsPages().map((page) => `- ${page.title}: ${pageUrl(origin, page.outRel)}`);
-  const lines = [
-    `# ${name}`,
-    "",
-    description,
-    "",
-    "Canonical documentation:",
-    ...docPages,
-  ];
+  const docPages = docsLlmsPages().map(
+    (page) => `- ${page.title}: ${pageUrl(origin, page.outRel)}`,
+  );
+  const lines = [`# ${name}`, "", description, "", "Canonical documentation:", ...docPages];
   if (install) {
     lines.push("", "Install:", `- ${install}`);
   }
   if (source) {
     lines.push("", `Source: ${source}`);
   }
-  lines.push("", "Guidance for agents:", "- Prefer the canonical documentation URLs above over README excerpts or package metadata.", "- Fetch only the pages needed for the current task; this is an index, not a full-site corpus.");
+  lines.push(
+    "",
+    "Guidance for agents:",
+    "- Prefer the canonical documentation URLs above over README excerpts or package metadata.",
+    "- Fetch only the pages needed for the current task; this is an index, not a full-site corpus.",
+  );
   return `${lines.join("\n")}\n`;
 }
 
 function docsLlmsPages() {
   const seen = new Set();
   const ordered = typeof orderedPages !== "undefined" ? orderedPages : [];
-  return [...ordered, ...pages].filter((page) => page.outRel && !seen.has(page.outRel) && seen.add(page.outRel));
+  return [...ordered, ...pages].filter(
+    (page) => page.outRel && !seen.has(page.outRel) && seen.add(page.outRel),
+  );
 }
 
 function docsOrigin() {
@@ -125,7 +130,8 @@ function docsOrigin() {
 function docsSourceUrl() {
   if (typeof repoBase !== "undefined") return repoBase;
   if (typeof repoUrl !== "undefined") return repoUrl;
-  if (typeof repoEditBase !== "undefined") return repoEditBase.replace(/\/edit\/main\/docs\/?$/, "");
+  if (typeof repoEditBase !== "undefined")
+    return repoEditBase.replace(/\/edit\/main\/docs\/?$/, "");
   return "";
 }
 
@@ -139,7 +145,10 @@ function docsInstallHint() {
 }
 
 function pageUrl(origin, outRel) {
-  const normalized = outRel === "index.html" ? "" : outRel.replace(/(?:^|\/)index\.html$/, (match) => match === "index.html" ? "" : "/");
+  const normalized =
+    outRel === "index.html"
+      ? ""
+      : outRel.replace(/(?:^|\/)index\.html$/, (match) => (match === "index.html" ? "" : "/"));
   if (!origin) return normalized || "index.html";
   return normalized ? `${origin}/${normalized}` : `${origin}/`;
 }
@@ -164,7 +173,10 @@ function parseFrontmatter(raw) {
     const m = line.match(/^([A-Za-z0-9_-]+):\s*(.*?)\s*$/);
     if (!m) continue;
     let value = m[2];
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
       value = value.slice(1, -1);
     }
     fm[m[1]] = value;
@@ -318,11 +330,17 @@ function markdownToHtml(markdown, currentRel) {
       if (level === 1) {
         html.push(`<h1 id="${id}">${inner}</h1>`);
       } else {
-        html.push(`<h${level} id="${id}"><a class="anchor" href="#${id}" aria-label="Anchor link">#</a>${inner}</h${level}>`);
+        html.push(
+          `<h${level} id="${id}"><a class="anchor" href="#${id}" aria-label="Anchor link">#</a>${inner}</h${level}>`,
+        );
       }
       continue;
     }
-    if (line.trimStart().startsWith("|") && line.includes("|", line.indexOf("|") + 1) && isDivider(lines[i + 1] || "")) {
+    if (
+      line.trimStart().startsWith("|") &&
+      line.includes("|", line.indexOf("|") + 1) &&
+      isDivider(lines[i + 1] || "")
+    ) {
       flushParagraph();
       closeList();
       const header = splitRow(line);
@@ -337,8 +355,18 @@ function markdownToHtml(markdown, currentRel) {
         i += 1;
         rows.push(splitRow(lines[i]));
       }
-      const th = header.map((c, idx) => `<th${aligns[idx] ? ` style="text-align:${aligns[idx]}"` : ""}>${inline(c, currentRel)}</th>`).join("");
-      const tb = rows.map((r) => `<tr>${r.map((c, idx) => `<td${aligns[idx] ? ` style="text-align:${aligns[idx]}"` : ""}>${inline(c, currentRel)}</td>`).join("")}</tr>`).join("");
+      const th = header
+        .map(
+          (c, idx) =>
+            `<th${aligns[idx] ? ` style="text-align:${aligns[idx]}"` : ""}>${inline(c, currentRel)}</th>`,
+        )
+        .join("");
+      const tb = rows
+        .map(
+          (r) =>
+            `<tr>${r.map((c, idx) => `<td${aligns[idx] ? ` style="text-align:${aligns[idx]}"` : ""}>${inline(c, currentRel)}</td>`).join("")}</tr>`,
+        )
+        .join("");
       html.push(`<table><thead><tr>${th}</tr></thead><tbody>${tb}</tbody></table>`);
       continue;
     }
@@ -373,11 +401,14 @@ function inline(text, currentRel) {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*([^*\s][^*]*?)\*(?!\*)/g, "$1<em>$2</em>")
     .replace(/(^|[^_])_([^_\s][^_]*?)_(?!_)/g, "$1<em>$2</em>")
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) => `<a href="${escapeAttr(rewriteHref(href, currentRel))}">${label}</a>`)
+    .replace(
+      /\[([^\]]+)\]\(([^)]+)\)/g,
+      (_, label, href) => `<a href="${escapeAttr(rewriteHref(href, currentRel))}">${label}</a>`,
+    )
     .replace(/&lt;(https?:\/\/[^\s<>]+)&gt;/g, '<a href="$1">$1</a>');
   out = out.replace(/\\\|/g, "|");
   out = out.replace(/&lt;br&gt;/g, "<br>");
-  return out.replace(/\u0000(\d+)\u0000/g, (_, i) => stash[Number(i)]);
+  return out.replace(codePlaceholderPattern, (_, i) => stash[Number(i)]);
 }
 
 function rewriteHref(href, currentRel) {
@@ -420,7 +451,8 @@ function tocFromHtml(html) {
 }
 
 function isHomePage(page) {
-  if (page.frontmatter.permalink && normalizePermalink(page.frontmatter.permalink) === "/") return true;
+  if (page.frontmatter.permalink && normalizePermalink(page.frontmatter.permalink) === "/")
+    return true;
   return page.rel === "index.md" || page.rel === "README.md";
 }
 
@@ -466,8 +498,12 @@ function layout({ page, html, toc, prev, next, sectionName }) {
   const heroBlock = home ? homeHero(page) : standardHero(page, sectionName, editUrl);
   const articleClass = home ? "doc doc-home" : "doc";
   const tocBlock = home ? "" : toc;
-  const titleSuffix = home ? `${productName} — ${productTagline}` : `${page.title} — ${productName}`;
-  const description = page.frontmatter.description || (home ? productDescription : `${page.title} — ${productName} CLI documentation.`);
+  const titleSuffix = home
+    ? `${productName} — ${productTagline}`
+    : `${page.title} — ${productName}`;
+  const description =
+    page.frontmatter.description ||
+    (home ? productDescription : `${page.title} — ${productName} CLI documentation.`);
   const canonicalUrl = pageCanonicalUrl(page);
   const socialImage = siteBase ? `${siteBase}/crabyard-logo.png` : `${rootPrefix}crabyard-logo.png`;
   const socialMeta = [
@@ -484,7 +520,9 @@ function layout({ page, html, toc, prev, next, sectionName }) {
     ["meta", "name", "twitter:title", "content", titleSuffix],
     ["meta", "name", "twitter:description", "content", description],
     ["meta", "name", "twitter:image", "content", socialImage],
-  ].map(tagHtml).join("\n  ");
+  ]
+    .map(tagHtml)
+    .join("\n  ");
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -532,12 +570,16 @@ function layout({ page, html, toc, prev, next, sectionName }) {
 function pageCanonicalUrl(page) {
   if (!siteBase) return page.outRel;
   if (page.outRel === "index.html") return `${siteBase}/`;
-  const rel = page.outRel.endsWith("/index.html") ? page.outRel.slice(0, -"index.html".length) : page.outRel;
+  const rel = page.outRel.endsWith("/index.html")
+    ? page.outRel.slice(0, -"index.html".length)
+    : page.outRel;
   return `${siteBase}/${rel}`;
 }
 
 function tagHtml([tag, k1, v1, k2, v2]) {
-  return tag === "link" ? `<link ${k1}="${v1}" ${k2}="${escapeAttr(v2)}">` : `<meta ${k1}="${v1}" ${k2}="${escapeAttr(v2)}">`;
+  return tag === "link"
+    ? `<link ${k1}="${v1}" ${k2}="${escapeAttr(v2)}">`
+    : `<meta ${k1}="${v1}" ${k2}="${escapeAttr(v2)}">`;
 }
 
 function pageNavHtml(prev, next, currentOutRel) {
@@ -550,11 +592,16 @@ function pageNavHtml(prev, next, currentOutRel) {
 
 function navHtml(currentPage) {
   return nav
-    .map((section) => `<section><h2>${escapeHtml(section.name)}</h2>${section.pages.map((page) => {
-      const href = hrefToOutRel(page.outRel, currentPage.outRel);
-      const active = page.rel === currentPage.rel ? " active" : "";
-      return `<a class="nav-link${active}" href="${href}">${escapeHtml(navTitle(page))}</a>`;
-    }).join("")}</section>`)
+    .map(
+      (section) =>
+        `<section><h2>${escapeHtml(section.name)}</h2>${section.pages
+          .map((page) => {
+            const href = hrefToOutRel(page.outRel, currentPage.outRel);
+            const active = page.rel === currentPage.rel ? " active" : "";
+            return `<a class="nav-link${active}" href="${href}">${escapeHtml(navTitle(page))}</a>`;
+          })
+          .join("")}</section>`,
+    )
     .join("");
 }
 
@@ -579,11 +626,18 @@ function hrefToOutRel(targetOutRel, currentOutRel) {
 }
 
 function slug(text) {
-  return text.toLowerCase().replace(/`/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return text
+    .toLowerCase()
+    .replace(/`/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char],
+  );
 }
 
 function escapeAttr(value) {
@@ -592,11 +646,24 @@ function escapeAttr(value) {
 
 function highlightCode(code, lang) {
   const language = (lang || "text").toLowerCase();
-  if (language === "bash" || language === "sh" || language === "shell" || language === "zsh" || language === "console") {
+  if (
+    language === "bash" ||
+    language === "sh" ||
+    language === "shell" ||
+    language === "zsh" ||
+    language === "console"
+  ) {
     return highlightShell(code);
   }
   if (language === "json" || language === "json5") return highlightJson(code);
-  if (language === "ts" || language === "typescript" || language === "js" || language === "javascript" || language === "tsx" || language === "jsx") {
+  if (
+    language === "ts" ||
+    language === "typescript" ||
+    language === "js" ||
+    language === "javascript" ||
+    language === "tsx" ||
+    language === "jsx"
+  ) {
     return highlightJs(code);
   }
   if (language === "go" || language === "golang") return highlightGo(code);
@@ -653,8 +720,14 @@ function highlightShellLine(line) {
   let working = line;
   working = working.replace(/(?:'[^']*'|"[^"]*")/g, (m) => stashAdd(m, "hl-s"));
   working = working.replace(/\s#.*$/g, (m) => stashAdd(m, "hl-c"));
-  working = working.replace(/(^|\s)(--?[A-Za-z][A-Za-z0-9-]*)/g, (_, lead, flag) => `${escapeHtml(lead)}${stashAdd(flag, "hl-f")}`);
-  working = working.replace(/\b(gog|brew|go|git|gh|make|sudo|cd|export|cat|curl|jq|ls|mv|cp|rm|mkdir|docker|tail|node|npm|pnpm|yarn)\b/g, (m) => stashAdd(m, "hl-cmd"));
+  working = working.replace(
+    /(^|\s)(--?[A-Za-z][A-Za-z0-9-]*)/g,
+    (_, lead, flag) => `${escapeHtml(lead)}${stashAdd(flag, "hl-f")}`,
+  );
+  working = working.replace(
+    /\b(gog|brew|go|git|gh|make|sudo|cd|export|cat|curl|jq|ls|mv|cp|rm|mkdir|docker|tail|node|npm|pnpm|yarn)\b/g,
+    (m) => stashAdd(m, "hl-cmd"),
+  );
   working = working.replace(/\b(\d+(?:\.\d+)?)\b/g, (m) => stashAdd(m, "hl-n"));
   return restoreStashTokens(escapeHtml(working), stash);
 }
@@ -675,7 +748,10 @@ function highlightJs(code) {
     [/`(?:\\.|[^`\\])*`/g, "hl-s"],
     [/"(?:\\.|[^"\\])*"/g, "hl-s"],
     [/'(?:\\.|[^'\\])*'/g, "hl-s"],
-    [/\b(const|let|var|function|return|if|else|for|while|switch|case|break|continue|class|extends|new|import|from|export|default|async|await|try|catch|finally|throw|typeof|instanceof|interface|type|enum|as|of|in|null|undefined|true|false|this)\b/g, "hl-k"],
+    [
+      /\b(const|let|var|function|return|if|else|for|while|switch|case|break|continue|class|extends|new|import|from|export|default|async|await|try|catch|finally|throw|typeof|instanceof|interface|type|enum|as|of|in|null|undefined|true|false|this)\b/g,
+      "hl-k",
+    ],
     [/\b(\d+(?:\.\d+)?)\b/g, "hl-n"],
   ]);
 }
@@ -686,7 +762,10 @@ function highlightGo(code) {
     [/\/\*[\s\S]*?\*\//g, "hl-c"],
     [/`[^`]*`/g, "hl-s"],
     [/"(?:\\.|[^"\\])*"/g, "hl-s"],
-    [/\b(package|import|func|return|if|else|for|range|switch|case|break|continue|default|type|struct|interface|map|chan|go|defer|select|var|const|nil|true|false|iota)\b/g, "hl-k"],
+    [
+      /\b(package|import|func|return|if|else|for|range|switch|case|break|continue|default|type|struct|interface|map|chan|go|defer|select|var|const|nil|true|false|iota)\b/g,
+      "hl-k",
+    ],
     [/\b(\d+(?:\.\d+)?)\b/g, "hl-n"],
   ]);
 }
@@ -710,13 +789,19 @@ function highlightYamlValue(rest) {
   if (!rest.trim()) return escapeHtml(rest);
   const trimmed = rest.trim();
   if (/^["'].*["']$/.test(trimmed)) {
-    return escapeHtml(rest.replace(trimmed, "")) + `<span class="hl-s">${escapeHtml(trimmed)}</span>`;
+    return (
+      escapeHtml(rest.replace(trimmed, "")) + `<span class="hl-s">${escapeHtml(trimmed)}</span>`
+    );
   }
   if (/^(true|false|null|~)$/i.test(trimmed)) {
-    return escapeHtml(rest.replace(trimmed, "")) + `<span class="hl-m">${escapeHtml(trimmed)}</span>`;
+    return (
+      escapeHtml(rest.replace(trimmed, "")) + `<span class="hl-m">${escapeHtml(trimmed)}</span>`
+    );
   }
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
-    return escapeHtml(rest.replace(trimmed, "")) + `<span class="hl-n">${escapeHtml(trimmed)}</span>`;
+    return (
+      escapeHtml(rest.replace(trimmed, "")) + `<span class="hl-n">${escapeHtml(trimmed)}</span>`
+    );
   }
   return escapeHtml(rest);
 }
@@ -733,14 +818,15 @@ function validateLinks(outputDir) {
       if (/^(#|https?:|mailto:|tel:|javascript:)/.test(href)) continue;
       if (placeholderHrefs.test(href)) continue;
       const [rawPath, anchor = ""] = href.split("#");
-      const targetPath = rawPath
-        ? path.resolve(path.dirname(file), rawPath)
-        : file;
-      const target = fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory()
-        ? path.join(targetPath, "index.html")
-        : targetPath;
+      const targetPath = rawPath ? path.resolve(path.dirname(file), rawPath) : file;
+      const target =
+        fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory()
+          ? path.join(targetPath, "index.html")
+          : targetPath;
       if (!fs.existsSync(target)) {
-        failures.push(`${path.relative(outputDir, file)}: ${href} -> missing ${path.relative(outputDir, target)}`);
+        failures.push(
+          `${path.relative(outputDir, file)}: ${href} -> missing ${path.relative(outputDir, target)}`,
+        );
         continue;
       }
       if (anchor) {
