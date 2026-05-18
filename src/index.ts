@@ -1532,6 +1532,9 @@ preferred_auth_method = "apikey"
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
 
+[features]
+goals = true
+
 [projects.${JSON.stringify(workdir)}]
 trust_level = "trusted"
 EOF
