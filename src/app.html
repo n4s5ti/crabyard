@@ -2099,6 +2099,10 @@
         const text = terminalText(session);
         if (existing?.mount === mount) {
           if (existing.live) {
+            if (existing.terminalExited) {
+              setTerminalStatus(session.id, existing.terminalExitLabel || "PTY exited");
+              return;
+            }
             if (!existing.socket || existing.socket.readyState >= WebSocket.CLOSING) {
               connectTerminalSocket(session, existing, existing.term);
             }
@@ -2183,7 +2187,7 @@
         });
         socket.addEventListener("message", async (event) => {
           if (typeof event.data === "string") {
-            handleTerminalControlMessage(session.id, event.data);
+            handleTerminalControlMessage(host, session.id, event.data);
             return;
           }
           const buffer =
@@ -2192,17 +2196,25 @@
           term.write(bytes);
         });
         socket.addEventListener("close", (event) => {
+          if (host.terminalExited) {
+            setTerminalStatus(session.id, host.terminalExitLabel || "PTY exited");
+            return;
+          }
           const reason = event.reason || (event.code === 1000 ? "closed" : `closed ${event.code}`);
           setTerminalStatus(session.id, `PTY ${reason}`);
         });
         socket.addEventListener("error", () => setTerminalStatus(session.id, "PTY error"));
       }
 
-      function handleTerminalControlMessage(id, data) {
+      function handleTerminalControlMessage(host, id, data) {
         try {
           const message = JSON.parse(data);
           if (message?.type === "ready") setTerminalStatus(id, "Live PTY");
-          if (message?.type === "exit") setTerminalStatus(id, `PTY exited ${message.code ?? ""}`);
+          if (message?.type === "exit") {
+            host.terminalExited = true;
+            host.terminalExitLabel = `PTY exited ${message.code ?? ""}`;
+            setTerminalStatus(id, host.terminalExitLabel);
+          }
         } catch {
           const host = terminalHosts.get(id);
           host?.term?.write(data);
