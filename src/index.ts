@@ -24,6 +24,8 @@ import {
 
 type Role = "viewer" | "maintainer" | "owner";
 
+const defaultInteractiveCommand = "codex --dangerously-bypass-approvals-and-sandbox";
+
 type RuntimeEnv = Env & {
   DB: D1Database;
   SANDBOX?: DurableObjectNamespace<CloudflareSandbox>;
@@ -973,7 +975,7 @@ async function createInteractiveSession(
   const runtime = oneOf(body.runtime, ["crabbox", "container"], "crabbox") as
     | "crabbox"
     | "container";
-  const command = clean(body.command, 240) || "codex";
+  const command = clean(body.command, 240) || defaultInteractiveCommand;
   const prompt = clean(body.prompt, 4000);
   const owner = actor(user);
   const now = Date.now();
@@ -1386,7 +1388,7 @@ async function provisionInteractiveEndpoint(
   const runtime = oneOf(session.runtime, ["crabbox", "container"], "crabbox") as
     | "crabbox"
     | "container";
-  const command = clean(session.command, 240) || "codex";
+  const command = clean(session.command, 240) || defaultInteractiveCommand;
   const prompt = clean(session.prompt, 4000);
   const owner = clean(session.owner, 240);
   if (!id || !repo || !owner) {
@@ -1529,8 +1531,8 @@ if [ -n "\${OPENAI_API_KEY:-}" ]; then
   cat > "$HOME/.codex/config.toml" <<'EOF'
 forced_login_method = "api"
 preferred_auth_method = "apikey"
-approval_policy = "on-request"
-sandbox_mode = "workspace-write"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
 
 [features]
 goals = true
@@ -1542,11 +1544,12 @@ EOF
 else
   printf 'OPENAI_API_KEY is not configured for this session.\\n'
 fi
+printf '\\033[2J\\033[H'
 if command -v ${shellFirstWord(session.command)} >/dev/null 2>&1; then
   exec ${session.command}
 fi
 if command -v codex >/dev/null 2>&1; then
-  exec codex
+  exec ${defaultInteractiveCommand}
 fi
 printf 'Codex CLI is not installed in this image. Opening bash.\\n'
 exec /bin/bash -l

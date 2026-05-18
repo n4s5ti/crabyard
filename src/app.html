@@ -1324,7 +1324,11 @@
             </label>
             <label
               >Command
-              <input name="command" value="codex" placeholder="codex" />
+              <input
+                name="command"
+                value="codex --dangerously-bypass-approvals-and-sandbox"
+                placeholder="codex --dangerously-bypass-approvals-and-sandbox"
+              />
             </label>
             <label class="full"
               >Prompt (optional)
@@ -2095,6 +2099,9 @@
         const text = terminalText(session);
         if (existing?.mount === mount) {
           if (existing.live) {
+            if (!existing.socket || existing.socket.readyState >= WebSocket.CLOSING) {
+              connectTerminalSocket(session, existing, existing.term);
+            }
             setTerminalStatus(
               session.id,
               existing.socket?.readyState === WebSocket.OPEN ? "Live PTY" : "PTY bridge",
@@ -2128,7 +2135,7 @@
             fit.fit();
             if (typeof fit.observeResize === "function") fit.observeResize();
           }
-          term.write(live ? liveTerminalConnectingText(session) : text);
+          if (!live) term.write(text);
           const host = { mount, term, fit, text, live, socket: null, dataSub: null };
           if (live && typeof term.onData === "function") {
             host.dataSub = term.onData((data) => sendTerminalInput(host, data));
@@ -2205,16 +2212,6 @@
       function sendTerminalInput(host, data) {
         if (host.socket?.readyState !== WebSocket.OPEN) return;
         host.socket.send(typeof data === "string" ? new TextEncoder().encode(data) : data);
-      }
-
-      function liveTerminalConnectingText(session) {
-        return [
-          `Connecting live Codex PTY...`,
-          `repo ${session.repo}`,
-          `branch ${session.branch}`,
-          `runtime ${session.runtime}`,
-          "",
-        ].join("\r\n");
       }
 
       function isStaleTerminalMount(session, mount, mountEpoch) {
@@ -2588,7 +2585,7 @@
           replaceInteractiveSession(result.session);
           form.reset();
           form.elements.branch.value = "main";
-          form.elements.command.value = "codex";
+          form.elements.command.value = "codex --dangerously-bypass-approvals-and-sandbox";
           focusedSessionId = result.session.id;
           render();
           openSessionGrid(result.session.id);
@@ -2837,7 +2834,9 @@
           repo,
           branch,
           runtime,
-          command: String(data.get("command") || "codex"),
+          command: String(
+            data.get("command") || "codex --dangerously-bypass-approvals-and-sandbox",
+          ),
           prompt: String(data.get("prompt") || ""),
           owner: state.user?.login || "local",
           status: "provisioning",
