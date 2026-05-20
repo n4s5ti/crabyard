@@ -1,0 +1,223 @@
+export const lanes = ["Todo", "Running", "Human Review", "Done"];
+export const preferredRepo = "openclaw/openclaw";
+
+export function roleRank(role) {
+  return { viewer: 1, maintainer: 2, owner: 3 }[role] || 0;
+}
+
+export function canMaintain(user) {
+  return roleRank(user?.role) >= roleRank("maintainer");
+}
+
+export function canOwn(user) {
+  return roleRank(user?.role) >= roleRank("owner");
+}
+
+export function preferredRepos(repos = []) {
+  return [...repos].sort((left, right) => {
+    if (left === preferredRepo) return -1;
+    if (right === preferredRepo) return 1;
+    return left.localeCompare(right);
+  });
+}
+
+export function issueNumber(value) {
+  const match = String(value || "")
+    .trim()
+    .match(/^#?(\d+)$/);
+  return match ? match[1] : "";
+}
+
+export function elapsed(value) {
+  if (!value) return "0m";
+  return `${Math.max(1, Math.floor((Date.now() - value) / 60000))}m`;
+}
+
+export function statusLabel(status) {
+  return { added: "A", deleted: "D", modified: "M", renamed: "R" }[status] || "M";
+}
+
+export function titleFromPrompt(prompt) {
+  const line = String(prompt || "")
+    .split(/\r?\n/)
+    .map((part) => part.trim())
+    .find(Boolean);
+  return line?.replace(/^#+\s*/, "").slice(0, 140) || "Untitled card";
+}
+
+export function sessionTitle(session) {
+  return session.title || `${session.repo} · ${session.branch}`;
+}
+
+export function runRuntime(session) {
+  return session.run?.runtime || session.runtime;
+}
+
+export function runCapabilities(session) {
+  if (session.kind === "interactive") {
+    const crabbox = session.runtime === "crabbox";
+    return {
+      terminal: true,
+      takeover: false,
+      vnc: crabbox,
+      desktop: crabbox,
+      logs: true,
+      artifacts: false,
+    };
+  }
+  if (session.run?.capabilities) return session.run.capabilities;
+  const crabbox = runRuntime(session) === "crabbox";
+  return {
+    terminal: true,
+    takeover: crabbox,
+    vnc: crabbox,
+    desktop: crabbox,
+    logs: true,
+    artifacts: true,
+  };
+}
+
+export function hasRunCapability(session, name) {
+  return name === "takeover" && !isActiveRun(session)
+    ? false
+    : runCapabilities(session)[name] === true;
+}
+
+export function isActiveRun(session) {
+  if (session.kind === "interactive") {
+    return ["provisioning", "pending_adapter", "ready", "attached", "detached"].includes(
+      session.status,
+    );
+  }
+  return ["queued", "leasing", "running"].includes(session.run?.status);
+}
+
+export function runtimeCapabilityLabel(session) {
+  const capabilities = runCapabilities(session);
+  if (capabilities.vnc) return "VNC eligible";
+  if (capabilities.terminal) return "terminal";
+  return runRuntime(session);
+}
+
+export function sessionItems(state) {
+  const cardItems = state.cards.map((card) => ({ ...card, kind: "card" }));
+  const interactiveItems = (state.interactiveSessions || []).map((session) => ({
+    ...session,
+    kind: "interactive",
+    title: sessionTitle(session),
+    lane: session.status,
+    policy: "interactive",
+  }));
+  return [...interactiveItems, ...cardItems].sort((left, right) => {
+    const laneRank = { Running: 0, "Human Review": 1, Todo: 2, Done: 3 };
+    const leftLane = left.kind === "interactive" ? 0 : (laneRank[left.lane] ?? 4);
+    const rightLane = right.kind === "interactive" ? 0 : (laneRank[right.lane] ?? 4);
+    if (leftLane !== rightLane) return leftLane - rightLane;
+    return (
+      Number(right.lastSeenAt || right.updatedAt || right.startedAt || right.createdAt || 0) -
+      Number(left.lastSeenAt || left.updatedAt || left.startedAt || left.createdAt || 0)
+    );
+  });
+}
+
+export function terminalText(session) {
+  if (session.kind === "interactive") {
+    const header = [
+      `$ ${session.command || "codex"}`,
+      `repo ${session.repo}`,
+      `branch ${session.branch}`,
+      `runtime ${session.runtime}`,
+      `status ${session.status}`,
+    ];
+    if (session.attachUrl) header.push(`attach ${session.attachUrl}`);
+    if (session.vncUrl) header.push(`vnc ${session.vncUrl}`);
+    if (session.status === "pending_adapter") header.push("runtime adapter not configured yet");
+    if (session.sharedReadOnly) header.push("read-only shared view");
+    if (session.shareMode === "link_read" && !session.sharedReadOnly) {
+      header.push(`share read-only link ${session.shareTokenPreview || "enabled"}`);
+    }
+    if (session.controlRequestedBy)
+      header.push(`control requested by ${session.controlRequestedBy}`);
+    if (session.controller) header.push(`controller ${session.controller}`);
+    if (session.prompt) header.push("", session.prompt);
+    const logs =
+      Array.isArray(session.logs) && session.logs.length
+        ? session.logs
+        : ["Waiting for interactive workspace..."];
+    return [...header, "", ...logs].join("\r\n") + "\r\n";
+  }
+  if (session.run) {
+    const header = [
+      `$ codex ${session.id}`,
+      `repo ${session.repo}`,
+      `runtime ${runRuntime(session)}`,
+      `policy ${session.policy}`,
+      `status ${session.run.status}`,
+    ];
+    const logs = Array.isArray(session.logs) && session.logs.length ? session.logs : [];
+    return [...header, "", ...logs].join("\r\n") + "\r\n";
+  }
+  const logs =
+    Array.isArray(session.logs) && session.logs.length ? session.logs : ["Codex session ready."];
+  return logs.join("\r\n") + "\r\n";
+}
+
+export function clipboardName(mediaType) {
+  return `clipboard-${Date.now()}${clipboardExtension(mediaType)}`;
+}
+
+export function clipboardExtension(mediaType) {
+  return (
+    {
+      "image/png": ".png",
+      "image/jpeg": ".jpg",
+      "image/gif": ".gif",
+      "image/webp": ".webp",
+      "text/plain": ".txt",
+      "text/markdown": ".md",
+      "application/json": ".json",
+      "application/pdf": ".pdf",
+    }[
+      String(mediaType || "")
+        .toLowerCase()
+        .split(";")[0]
+    ] || ".bin"
+  );
+}
+
+export function optimisticInteractiveSession(data, owner) {
+  const now = Date.now();
+  const repo = String(data.get("repo") || preferredRepo);
+  const branch = String(data.get("branch") || "main");
+  const runtime = String(data.get("runtime") || "container");
+  return {
+    id: `LOCAL-${now}`,
+    repo,
+    branch,
+    runtime,
+    command: String(data.get("command") || "codex --dangerously-bypass-approvals-and-sandbox"),
+    prompt: String(data.get("prompt") || ""),
+    owner: owner || "local",
+    status: "provisioning",
+    leaseId: null,
+    attachUrl: null,
+    vncUrl: null,
+    lastEvent: "Provisioning Cloudflare Sandbox...",
+    createdAt: now,
+    updatedAt: now,
+    lastSeenAt: now,
+    stoppedAt: null,
+    shareMode: "private",
+    shareTokenPreview: null,
+    controlRequestedBy: null,
+    controlRequestedAt: null,
+    controller: null,
+    controlGrantedAt: null,
+    controlExpiresAt: null,
+    canControl: true,
+    canManage: true,
+    canRequestControl: false,
+    logs: ["Provisioning Cloudflare Sandbox...", "Starting Codex CLI..."],
+    title: `${repo} · ${branch}`,
+  };
+}

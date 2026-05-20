@@ -1,6 +1,10 @@
+import { execFile } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { promisify } from "node:util";
 
-const appPath = new URL("../src/app.html", import.meta.url);
+const run = promisify(execFile);
+const appBuildRoot = new URL("../dist/app-bundle/", import.meta.url);
+const appPath = new URL("../dist/app-bundle/app.html", import.meta.url);
 const specPath = new URL("../docs/spec.md", import.meta.url);
 const logoPath = new URL("../src/assets/crabyard-logo.png", import.meta.url);
 const ghosttyWebPath = new URL("../node_modules/ghostty-web/dist/ghostty-web.js", import.meta.url);
@@ -17,9 +21,16 @@ const distRoot = new URL("../dist/", import.meta.url);
 const distApp = new URL("../dist/app/", import.meta.url);
 const distDocs = new URL("../dist/docs/", import.meta.url);
 
+await run(process.execPath, [
+  new URL("../node_modules/vite/bin/vite.js", import.meta.url).pathname,
+  "build",
+  "--config",
+  new URL("../vite.config.mjs", import.meta.url).pathname,
+]);
+
 const [appHtmlSource, rawSpecMarkdown, logoBytes, ghosttyWebJs, ghosttyExternalJs, lucideIconJson] =
   await Promise.all([
-    readFile(appPath, "utf8"),
+    readAppHtml(),
     readFile(specPath, "utf8"),
     readFile(logoPath),
     readFile(ghosttyWebPath, "utf8"),
@@ -30,7 +41,7 @@ const [appHtmlSource, rawSpecMarkdown, logoBytes, ghosttyWebJs, ghosttyExternalJ
 const logoDataUrl = `data:image/png;base64,${logoBytes.toString("base64")}`;
 const logoBase64 = logoBytes.toString("base64");
 const lucideIconScript = buildLucideIconScript(JSON.parse(lucideIconJson));
-const appHtml = appHtmlSource
+const appHtml = (await inlineViteAssets(appHtmlSource))
   .replaceAll("__CRABYARD_LOGO__", logoDataUrl)
   .replace("__LUCIDE_ICONS__", lucideIconScript);
 const specMarkdown = stripFrontmatter(rawSpecMarkdown);
@@ -61,22 +72,46 @@ function redirectHtml(path) {
   return `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=${target}"><title>Crabyard.ai</title><a href="${target}">Crabyard.ai</a>`;
 }
 
+async function readAppHtml() {
+  for (const candidate of [
+    appPath,
+    new URL("../dist/app-bundle/index.html", import.meta.url),
+    new URL("../dist/app-bundle/src/app.html", import.meta.url),
+  ]) {
+    try {
+      return await readFile(candidate, "utf8");
+    } catch {}
+  }
+  throw new Error("Vite app HTML was not generated");
+}
+
+async function inlineViteAssets(html) {
+  let result = html;
+  const scriptPattern = /<script type="module"(?: crossorigin)? src="([^"]+)"><\/script>/g;
+  for (const match of html.matchAll(scriptPattern)) {
+    const [tag, src] = match;
+    const js = await readFile(viteAssetUrl(src), "utf8");
+    result = result.replace(tag, `<script type="module">\n${js}\n</script>`);
+  }
+  const stylePattern = /<link rel="stylesheet"(?: crossorigin)? href="([^"]+)">/g;
+  for (const match of html.matchAll(stylePattern)) {
+    const [tag, href] = match;
+    const css = await readFile(viteAssetUrl(href), "utf8");
+    result = result.replace(tag, `<style>\n${css}\n</style>`);
+  }
+  return result;
+}
+
+function viteAssetUrl(path) {
+  const relative = path.replace(/^\/?/, "");
+  return new URL(relative, appBuildRoot);
+}
+
 function buildLucideIconScript(iconNodes) {
   const names = ["book-open", "layout-grid", "moon", "settings", "sun", "terminal", "x"];
   const selected = Object.fromEntries(names.map((name) => [name, iconNodes[name]]));
   return `(() => {
-  const icons = ${JSON.stringify(selected)};
-  const attrs = 'xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
-  const attr = (value) => Object.entries(value).map(([key, raw]) => \`\${key}="\${String(raw).replaceAll('"', '&quot;')}"\`).join(" ");
-  const node = ([tag, value]) => \`<\${tag} \${attr(value)}></\${tag}>\`;
-  const svg = (name) => icons[name] ? \`<svg \${attrs} aria-hidden="true">\${icons[name].map(node).join("")}</svg>\` : "";
-  globalThis.lucide = {
-    createIcons() {
-      document.querySelectorAll("i[data-lucide]").forEach((element) => {
-        element.outerHTML = svg(element.dataset.lucide);
-      });
-    },
-  };
+  globalThis.lucideIconNodes = ${JSON.stringify(selected)};
 })();`;
 }
 

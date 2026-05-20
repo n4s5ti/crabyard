@@ -215,11 +215,13 @@ wrangler d1 migrations apply crabyard-ai --local
 crabyard/
 ├── src/
 │   ├── index.ts          # Worker entry point, API routes, auth handlers
-│   ├── app.html          # Single-page app shell
+│   ├── app.html          # Single-page app shell and styles
+│   ├── app/              # Preact app modules
 │   ├── generated.ts      # Build-time generated assets
 ├── migrations/           # D1 database migrations
 ├── scripts/              # Build scripts
 │   └── generate-assets.mjs
+├── vite.config.mjs       # Preact/Vite app bundle config
 ├── docs/                 # Documentation (GitHub Pages)
 │   ├── CNAME             # docs.crabyard.ai custom domain
 │   └── spec.md           # Product spec
