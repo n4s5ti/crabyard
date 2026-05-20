@@ -140,7 +140,11 @@ function App() {
       sharedSessionId,
       sharedToken,
       sessions: () => sessionItems(stateRef.current),
-      onStatus: (id, label) => setTerminalStatus((current) => ({ ...current, [id]: label })),
+      onStatus: (id, label) =>
+        setTerminalStatus((current) => {
+          if (current[id] === label) return current;
+          return { ...current, [id]: label };
+        }),
     });
   }, [sharedSessionId, sharedToken, state]);
 

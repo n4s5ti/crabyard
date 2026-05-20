@@ -902,14 +902,17 @@
       .session-cell-head {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+          "title status"
+          "controls controls";
         gap: 10px;
         align-items: center;
         padding: 12px;
         border-bottom: 1px solid var(--line);
         background: var(--panel);
-        position: relative;
       }
       .session-cell-title {
+        grid-area: title;
         min-width: 0;
         display: grid;
         gap: 3px;
@@ -928,6 +931,7 @@
         font-size: 12px;
       }
       .session-status {
+        grid-area: status;
         display: inline-flex;
         align-items: center;
         gap: 6px;
@@ -963,31 +967,14 @@
       .session-status.provisioning::before {
         background: #f59e0b;
       }
-      .session-cell:hover .session-status,
-      .session-cell:focus-within .session-status,
-      .session-cell.layout-editing .session-status,
-      .session-grid.focus-mode .session-status {
-        opacity: 0;
-      }
       .session-controls {
+        grid-area: controls;
+        min-width: 0;
+        max-width: 100%;
         display: flex;
         gap: 6px;
         flex-wrap: wrap;
-        justify-content: flex-end;
-        opacity: 0;
-        pointer-events: none;
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        max-width: calc(100% - 20px);
-        padding-left: 80px;
-        transition: opacity 0.12s ease;
-      }
-      .session-cell:hover .session-controls,
-      .session-cell:focus-within .session-controls,
-      .session-cell.layout-editing .session-controls,
-      .session-grid.focus-mode .session-controls {
-        opacity: 1;
+        justify-content: flex-start;
         pointer-events: auto;
       }
       .session-controls button {
@@ -995,6 +982,9 @@
         padding: 0 9px;
         font-size: 12px;
         font-weight: 700;
+      }
+      .session-controls button:hover {
+        transform: none;
       }
       .session-controls button.session-drag {
         cursor: grab;
