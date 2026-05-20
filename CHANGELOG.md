@@ -2,8 +2,9 @@
 
 ## Unreleased
 
+- Simplify the Codex session grid with larger terminal tiles, hover-only actions, and a quieter layout menu.
 - Migrate the app shell to Preact/Vite modules while preserving inlined Worker assets.
-- Add an editable, persisted Codex session grid with column density, compact mode, drag reorder, and per-tile sizing.
+- Add an editable, persisted Codex session grid with column density, drag reorder, and per-tile sizing.
 - Add browser clipboard copy/paste controls for live Codex terminals, including image/file paste into Cloudflare Sandbox workspaces.
 - Add a multiplexed binary terminal WebSocket protocol for Codex session grids and shared viewers.
 - Add read-only Codex session share links with owner-approved terminal control requests.

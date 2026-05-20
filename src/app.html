@@ -850,25 +850,18 @@
         font-weight: 700;
         box-shadow: var(--shadow);
       }
-      .session-tools input[type="checkbox"] {
-        width: 14px;
-        height: 14px;
-        min-height: 0;
-        padding: 0;
-        box-shadow: none;
-      }
       .session-panel .panel-body {
         display: grid;
         min-height: 0;
         padding: 14px;
       }
       .session-grid {
-        --session-gap: 12px;
-        --session-row-height: 180px;
-        --session-cell-min: 360px;
+        --session-gap: 14px;
+        --session-row-height: 280px;
+        --session-cell-min: 460px;
         min-height: 0;
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(560px, 100%), 1fr));
         grid-auto-flow: row;
         grid-auto-rows: minmax(var(--session-row-height), auto);
         gap: var(--session-gap);
@@ -878,11 +871,6 @@
       }
       .session-grid.layout-editing {
         user-select: none;
-      }
-      .session-grid.compact-layout {
-        --session-gap: 8px;
-        --session-row-height: 145px;
-        --session-cell-min: 280px;
       }
       .session-grid.focus-mode {
         grid-template-columns: 1fr;
@@ -911,29 +899,20 @@
         border-color: var(--primary);
         box-shadow: 0 0 0 2px rgb(124 138 219 / 0.24);
       }
-      .session-grid.compact-layout .session-cell-head {
-        padding: 8px 10px;
-      }
-      .session-grid.compact-layout .session-meta {
-        display: none;
-      }
-      .session-grid.compact-layout .session-cell-foot {
-        min-height: 28px;
-        padding: 5px 10px;
-      }
       .session-cell-head {
         display: grid;
-        grid-template-columns: 1fr auto;
+        grid-template-columns: minmax(0, 1fr) auto;
         gap: 10px;
-        align-items: start;
+        align-items: center;
         padding: 12px;
         border-bottom: 1px solid var(--line);
         background: var(--panel);
+        position: relative;
       }
       .session-cell-title {
         min-width: 0;
         display: grid;
-        gap: 6px;
+        gap: 3px;
       }
       .session-cell-title strong {
         overflow: hidden;
@@ -941,16 +920,75 @@
         white-space: nowrap;
         font-size: 14px;
       }
-      .session-meta {
-        display: flex;
-        gap: 5px;
-        flex-wrap: wrap;
+      .session-cell-title span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .session-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        max-width: 150px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 5px 9px;
+        color: var(--ink);
+        background: color-mix(in srgb, var(--panel-2) 76%, transparent);
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+        transition: opacity 0.12s ease;
+      }
+      .session-status::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: var(--muted);
+      }
+      .session-status.live::before {
+        background: #38bdf8;
+        box-shadow: 0 0 0 3px rgb(56 189 248 / 0.12);
+      }
+      .session-status.shared::before {
+        background: #a78bfa;
+      }
+      .session-status.failed::before,
+      .session-status.stopped::before {
+        background: #f87171;
+      }
+      .session-status.provisioning::before {
+        background: #f59e0b;
+      }
+      .session-cell:hover .session-status,
+      .session-cell:focus-within .session-status,
+      .session-cell.layout-editing .session-status,
+      .session-grid.focus-mode .session-status {
+        opacity: 0;
       }
       .session-controls {
         display: flex;
         gap: 6px;
         flex-wrap: wrap;
         justify-content: flex-end;
+        opacity: 0;
+        pointer-events: none;
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        max-width: calc(100% - 20px);
+        padding-left: 80px;
+        transition: opacity 0.12s ease;
+      }
+      .session-cell:hover .session-controls,
+      .session-cell:focus-within .session-controls,
+      .session-cell.layout-editing .session-controls,
+      .session-grid.focus-mode .session-controls {
+        opacity: 1;
+        pointer-events: auto;
       }
       .session-controls button {
         min-width: 34px;
@@ -967,6 +1005,44 @@
       }
       .session-controls button.danger {
         color: #fca5a5;
+      }
+      .session-layout-menu {
+        position: relative;
+      }
+      .session-layout-menu summary {
+        min-height: 34px;
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 0 10px;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 700;
+        box-shadow: var(--shadow);
+        cursor: pointer;
+        list-style: none;
+      }
+      .session-layout-menu summary::-webkit-details-marker {
+        display: none;
+      }
+      .session-layout-popover {
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 0;
+        z-index: 20;
+        min-width: 160px;
+        display: grid;
+        gap: 6px;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+      .session-layout-popover button {
+        justify-content: flex-start;
       }
       .session-terminal-wrap {
         min-height: 0;
@@ -1001,12 +1077,18 @@
         align-items: center;
         justify-content: space-between;
         gap: 10px;
-        min-height: 36px;
+        min-height: 34px;
         padding: 8px 12px;
         border-top: 1px solid var(--line);
         color: var(--muted);
         font-size: 12px;
         background: var(--panel);
+      }
+      .session-cell-foot span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .session-empty {
         display: grid;

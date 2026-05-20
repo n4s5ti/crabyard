@@ -1286,8 +1286,8 @@ function SessionsDrawer(props) {
         <div class="panel-body">
           <section
             class={`session-grid ${props.sessionLayout.columns !== "auto" && !focused ? "fixed-columns" : ""} ${
-              props.sessionLayout.compact && !focused ? "compact-layout" : ""
-            } ${props.sessionLayout.edit && !focused ? "layout-editing" : ""} ${focused ? "focus-mode" : ""}`}
+              props.sessionLayout.edit && !focused ? "layout-editing" : ""
+            } ${focused ? "focus-mode" : ""}`}
             style={{
               "--session-columns":
                 props.sessionLayout.columns !== "auto" && !focused
@@ -1333,27 +1333,30 @@ function SessionTools({ focused, sessionLayout, setSessionLayout, closeDrawer, s
           ))}
         </select>
       </label>
-      <label>
-        <input
-          type="checkbox"
-          checked={sessionLayout.compact}
-          disabled={focused}
-          onChange={(event) =>
-            setSessionLayout((layout) => ({ ...layout, compact: event.currentTarget.checked }))
-          }
-        />{" "}
-        Compact
-      </label>
-      <button
-        disabled={focused}
-        class={sessionLayout.edit && !focused ? "primary" : ""}
-        onClick={() => setSessionLayout((layout) => ({ ...layout, edit: !layout.edit }))}
-      >
-        {sessionLayout.edit && !focused ? "Done editing" : "Edit layout"}
-      </button>
-      <button disabled={focused} onClick={() => setSessionLayout(defaultSessionLayout(true))}>
-        Reset
-      </button>
+      <details class="session-layout-menu">
+        <summary>Layout</summary>
+        <div class="session-layout-popover">
+          <button
+            disabled={focused}
+            class={sessionLayout.edit && !focused ? "primary" : ""}
+            onClick={(event) => {
+              event.currentTarget.closest("details")?.removeAttribute("open");
+              setSessionLayout((layout) => ({ ...layout, edit: !layout.edit }));
+            }}
+          >
+            {sessionLayout.edit && !focused ? "Done editing" : "Edit layout"}
+          </button>
+          <button
+            disabled={focused}
+            onClick={(event) => {
+              event.currentTarget.closest("details")?.removeAttribute("open");
+              setSessionLayout(defaultSessionLayout(true));
+            }}
+          >
+            Reset
+          </button>
+        </div>
+      </details>
       <button onClick={showSessionGrid} hidden={!focused}>
         Grid
       </button>
@@ -1422,9 +1425,13 @@ function SessionCell(props) {
     >
       <header class="session-cell-head">
         <div class="session-cell-title">
-          <strong title={session.title}>{session.title}</strong>
-          <SessionMeta session={session} />
+          <strong title={session.title}>{session.repo}</strong>
+          <span title={session.branch || session.title}>
+            {session.branch || session.title}
+            {session.kind !== "interactive" && session.policy ? ` · ${session.policy}` : ""}
+          </span>
         </div>
+        <SessionStatus session={session} />
         <div class="session-controls">
           {editable ? <SessionLayoutButtons session={session} {...props} /> : null}
           {props.focused ? (
@@ -1436,18 +1443,18 @@ function SessionCell(props) {
                 props.openSessionGrid(session.id, { deepLink: session.kind === "interactive" });
               }}
             >
-              Full
+              Open
             </button>
           )}
-          <SessionActions session={session} {...props} />
+          <SessionActions session={session} minimal={!props.focused && !editable} {...props} />
         </div>
       </header>
       <div class="session-terminal-wrap">
         <TerminalMount session={session} focused={props.focused} drawerOpen={props.drawerOpen} />
       </div>
       <footer class="session-cell-foot">
-        <span>{props.terminalStatus[session.id] || "Ghostty WASM"}</span>
-        <span>{runtimeCapabilityLabel(session)}</span>
+        <span>{sessionFooterSummary(session)}</span>
+        <span>{props.terminalStatus[session.id] || runtimeCapabilityLabel(session)}</span>
       </footer>
     </article>
   );
@@ -1491,6 +1498,14 @@ function SessionLayoutButtons({ session, sessionLayout, setSessionLayout }) {
 function SessionActions(props) {
   const session = props.session;
   if (session.kind === "interactive") return <InteractiveSessionActions {...props} />;
+  if (props.minimal) {
+    return (
+      <>
+        <button onClick={() => props.openRunDetails(session.id)}>Details</button>
+        <button onClick={() => props.cardAction(session.id, "watch")}>Watch</button>
+      </>
+    );
+  }
   return (
     <>
       <button onClick={() => props.openRunDetails(session.id)}>Details</button>
@@ -1510,6 +1525,27 @@ function InteractiveSessionActions(props) {
   const canUse = session.canControl || canManage;
   const filePaste =
     canUse && typeof session.leaseId === "string" && session.leaseId.startsWith("sandbox:");
+  if (props.minimal) {
+    return (
+      <>
+        {canManage ? (
+          <button onClick={() => props.shareInteractiveSession(session.id)}>
+            {session.shareMode === "link_read" ? "New link" : "Share"}
+          </button>
+        ) : null}
+        {!stopped && canUse ? (
+          <button onClick={() => props.interactiveSessionAction(session.id, "attach")}>
+            Attach
+          </button>
+        ) : null}
+        {canManage && !stopped ? (
+          <button class="danger" onClick={() => props.interactiveSessionAction(session.id, "stop")}>
+            Stop
+          </button>
+        ) : null}
+      </>
+    );
+  }
   return (
     <>
       <button onClick={() => copyTerminalSelection(session.id)}>Copy</button>
@@ -1564,44 +1600,59 @@ function InteractiveSessionActions(props) {
   );
 }
 
-function SessionMeta({ session }) {
+function SessionStatus({ session }) {
+  const status = sessionStatus(session);
+  return <span class={`session-status ${status.tone}`}>{status.label}</span>;
+}
+
+function sessionStatus(session) {
   if (session.kind === "interactive") {
-    const live = ["provisioning", "ready", "attached"].includes(session.status);
-    return (
-      <div class="session-meta">
-        <span class="chip">{session.id}</span>
-        <span class="chip">{session.repo}</span>
-        <span class="chip">{session.runtime}</span>
-        <span class="chip merge">{session.status}</span>
-        <span class="chip">{session.branch}</span>
-        {session.shareMode === "link_read" || session.sharedReadOnly ? (
-          <span class="chip">shared</span>
-        ) : null}
-        {session.controller ? <span class="chip">control {session.controller}</span> : null}
-        {session.controlRequestedBy ? (
-          <span class="chip hot">request {session.controlRequestedBy}</span>
-        ) : null}
-        {live ? (
-          <span class="chip hot">seen {elapsed(session.lastSeenAt || session.updatedAt)}</span>
-        ) : null}
-      </div>
-    );
+    if (["failed"].includes(session.status)) return { label: "Failed", tone: "failed" };
+    if (["stopped", "expired"].includes(session.status))
+      return { label: "Stopped", tone: "stopped" };
+    if (session.status === "provisioning" || session.status === "pending_adapter") {
+      return { label: "Provisioning", tone: "provisioning" };
+    }
+    if (session.shareMode === "link_read" || session.sharedReadOnly) {
+      return { label: "Shared", tone: "shared" };
+    }
+    if (["ready", "attached", "detached"].includes(session.status)) {
+      return { label: "Live", tone: "live" };
+    }
+    return { label: humanStatus(session.status), tone: "" };
   }
-  const running = session.lane === "Running";
-  return (
-    <div class="session-meta">
-      <span class="chip">{session.id}</span>
-      <span class="chip">{session.repo}</span>
-      <span class="chip">{session.run?.runtime || session.runtime}</span>
-      {session.run ? <span class="chip">{session.run.status}</span> : null}
-      <span class="chip merge">{session.policy}</span>
-      {running ? (
-        <span class="chip hot">
-          live {elapsed(session.run?.lastHeartbeatAt || session.startedAt)}
-        </span>
-      ) : null}
-    </div>
-  );
+  if (session.run?.status === "failed" || session.lane === "Human Review") {
+    return { label: humanStatus(session.run?.status || session.lane), tone: "failed" };
+  }
+  if (session.lane === "Running") return { label: "Live", tone: "live" };
+  if (session.lane === "Done") return { label: "Done", tone: "stopped" };
+  return { label: session.lane || humanStatus(session.run?.status), tone: "" };
+}
+
+function sessionFooterSummary(session) {
+  if (session.kind === "interactive") {
+    const parts = [session.id];
+    const seen = session.lastSeenAt || session.updatedAt;
+    if (seen) parts.push(`seen ${elapsed(seen)}`);
+    if (session.status) parts.push(humanStatus(session.status));
+    if (session.shareMode === "link_read" || session.sharedReadOnly) parts.push("shared");
+    if (session.controller) parts.push(`control ${session.controller}`);
+    if (session.controlRequestedBy) parts.push(`request ${session.controlRequestedBy}`);
+    return parts.join(" · ");
+  }
+  const parts = [session.id];
+  if (session.run?.lastHeartbeatAt || session.startedAt) {
+    parts.push(`seen ${elapsed(session.run?.lastHeartbeatAt || session.startedAt)}`);
+  }
+  if (session.run?.status) parts.push(humanStatus(session.run.status));
+  if (session.run?.runtime || session.runtime) parts.push(session.run?.runtime || session.runtime);
+  return parts.join(" · ");
+}
+
+function humanStatus(value) {
+  return String(value || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function TerminalMount({ session, focused, drawerOpen }) {
@@ -1933,7 +1984,7 @@ function moveSessionLayoutItem(layout, items, sourceId, targetId) {
 }
 
 function defaultSessionLayout(edit = false) {
-  return { columns: "auto", compact: false, edit, manualOrder: false, order: [], sizes: {} };
+  return { columns: "auto", edit, manualOrder: false, order: [], sizes: {} };
 }
 
 function loadSessionLayout() {
@@ -1952,7 +2003,6 @@ function saveSessionLayout(layout) {
       sessionLayoutStorageKey,
       JSON.stringify({
         columns: layout.columns,
-        compact: layout.compact,
         manualOrder: layout.manualOrder,
         order: layout.order,
         sizes: layout.sizes,
@@ -1968,7 +2018,6 @@ function normalizeSessionLayout(value) {
     )
       ? String(value.columns)
       : "auto",
-    compact: Boolean(value?.compact),
     edit: false,
     manualOrder: Boolean(value?.manualOrder),
     order: Array.isArray(value?.order) ? value.order.map(String).slice(0, 200) : [],
