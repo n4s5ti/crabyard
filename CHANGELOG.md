@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add a GitHub Actions Worker deploy workflow for automatic Cloudflare deploys on `main` pushes.
 - Simplify the Codex session grid with larger terminal tiles, hover-only actions, and a quieter layout menu.
 - Migrate the app shell to Preact/Vite modules while preserving inlined Worker assets.
 - Add an editable, persisted Codex session grid with column density, drag reorder, and per-tile sizing.

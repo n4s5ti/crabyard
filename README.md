@@ -122,6 +122,12 @@ merge:
 
 ### Deploy
 
+Pushes to `main` run `.github/workflows/deploy-worker.yml`, which checks, tests, builds,
+applies remote D1 migrations, and deploys the Worker. Configure the repository secret
+`CLOUDFLARE_API_TOKEN` with permissions for Workers deploys and D1 migrations.
+
+Manual deploy is still available:
+
 ```bash
 # Build assets
 pnpm build
