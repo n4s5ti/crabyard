@@ -113,11 +113,19 @@ export function sessionItems(state) {
     const leftLane = left.kind === "interactive" ? 0 : (laneRank[left.lane] ?? 4);
     const rightLane = right.kind === "interactive" ? 0 : (laneRank[right.lane] ?? 4);
     if (leftLane !== rightLane) return leftLane - rightLane;
-    return (
-      Number(right.lastSeenAt || right.updatedAt || right.startedAt || right.createdAt || 0) -
-      Number(left.lastSeenAt || left.updatedAt || left.startedAt || left.createdAt || 0)
-    );
+    return sessionSortTime(right) - sessionSortTime(left);
   });
+}
+
+function sessionSortTime(session) {
+  if (session.kind === "interactive") return Number(session.updatedAt || session.createdAt || 0);
+  return Number(
+    session.run?.lastHeartbeatAt ||
+      session.updatedAt ||
+      session.startedAt ||
+      session.createdAt ||
+      0,
+  );
 }
 
 export function terminalText(session) {

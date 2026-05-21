@@ -335,10 +335,11 @@ function handleTerminalHubFrame(frame) {
   if (frame.type === TerminalMessageType.Error) {
     host.subscribed = false;
     const message = event?.error || "PTY error";
-    setTerminalStatus(frame.sessionId, message);
-    if (String(message).includes("revoked")) {
+    const label = terminalErrorLabel(message);
+    setTerminalStatus(frame.sessionId, label);
+    if (isTerminalFinalError(message)) {
       host.terminalExited = true;
-      host.terminalExitLabel = message;
+      host.terminalExitLabel = label;
     } else {
       scheduleTerminalResubscribe(frame.sessionId);
     }
@@ -370,8 +371,11 @@ function handleTerminalHubFrame(frame) {
   if (event?.type === "closed") {
     host.subscribed = false;
     host.terminalCloseLabel = `PTY closed ${event.code ?? ""}`.trim();
+    if (!isTerminalPassiveClose(event.reason)) {
+      host.terminalExited = true;
+      host.terminalExitLabel = host.terminalCloseLabel;
+    }
     setTerminalStatus(frame.sessionId, host.terminalCloseLabel);
-    if (!host.terminalExited) scheduleTerminalResubscribe(frame.sessionId);
   }
 }
 
@@ -468,6 +472,29 @@ function scheduleTerminalResubscribe(id) {
       subscribeTerminalHost(session, host, host.term);
     }
   }, 1500);
+}
+
+function isTerminalFinalError(message) {
+  const text = String(message || "").toLowerCase();
+  return (
+    text.includes("revoked") ||
+    text.includes("session is stopped") ||
+    text.includes("session is expired") ||
+    text.includes("session is failed") ||
+    text.includes("upstream terminal error") ||
+    text.includes("terminal unavailable") ||
+    text.includes("sandbox terminal") ||
+    text.includes("pty bridge") ||
+    text.includes("not configured")
+  );
+}
+
+function terminalErrorLabel(message) {
+  return isTerminalFinalError(message) ? "PTY unavailable" : String(message || "PTY error");
+}
+
+function isTerminalPassiveClose(reason) {
+  return ["unsubscribed", "client closed", "no terminals mounted"].includes(String(reason || ""));
 }
 
 function sendTerminalInput(host, data) {

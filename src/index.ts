@@ -277,6 +277,7 @@ type TerminalHubSubscription = {
   upstream: WebSocket;
   canView: () => Promise<boolean>;
   canInput: () => Promise<boolean>;
+  markClosing: (reason: string) => void;
   viewCheck: ReturnType<typeof setInterval> | null;
   cols: number;
   rows: number;
@@ -1485,6 +1486,7 @@ async function interactiveTerminalHub(
     const subscription = subscriptions.get(id);
     if (!subscription) return;
     subscriptions.delete(id);
+    subscription.markClosing(reason);
     if (subscription.viewCheck !== null) clearInterval(subscription.viewCheck);
     if (subscription.upstream.readyState < WebSocket.CLOSING) {
       subscription.upstream.close(code, reason);
@@ -1710,14 +1712,35 @@ async function subscribeTerminalHubSession(
     const canView = terminalViewGrant(request, env, user, session);
     const cols = canInputNow ? terminalDimension(subscription.cols, 120) : 120;
     const rows = canInputNow ? terminalDimension(subscription.rows, 34) : 34;
-    const upstreamConnection = await openInteractiveTerminalUpstream(
-      request,
-      env,
-      user,
-      session,
-      cols,
-      rows,
-    );
+    let closingReason: string | undefined;
+    const markClosing = (reason: string) => {
+      closingReason = reason;
+    };
+    const consumeCloseReason = () => {
+      const reason = closingReason;
+      closingReason = undefined;
+      return reason;
+    };
+    let upstreamConnection: TerminalUpstream;
+    try {
+      upstreamConnection = await openInteractiveTerminalUpstream(
+        request,
+        env,
+        user,
+        session,
+        cols,
+        rows,
+      );
+    } catch (error) {
+      const message = `terminal unavailable: ${
+        error instanceof Error ? clean(error.message, 180) : "terminal connection failed"
+      }`;
+      await markInteractiveTerminalUnavailable(env, user, id, Date.now(), message);
+      sendTerminalJson(client, TerminalMessageType.Error, id, {
+        error: message,
+      });
+      return;
+    }
     const upstream = upstreamConnection.socket;
     if (!isHubOpen() || client.readyState !== WebSocket.OPEN) {
       if (upstream.readyState < WebSocket.CLOSING) upstream.close(1000, "client closed");
@@ -1742,7 +1765,16 @@ async function subscribeTerminalHubSession(
         })
         .catch(() => revokeView());
     }, 5000);
-    subscriptions.set(id, { session, upstream, canView, canInput, viewCheck, cols, rows });
+    subscriptions.set(id, {
+      session,
+      upstream,
+      canView,
+      canInput,
+      markClosing,
+      viewCheck,
+      cols,
+      rows,
+    });
     let outputQueue = Promise.resolve();
     sendTerminalJson(client, TerminalMessageType.Event, id, {
       type: "subscribed",
@@ -1769,20 +1801,30 @@ async function subscribeTerminalHubSession(
         });
     });
     upstream.addEventListener("close", (event) => {
+      const closeReason = consumeCloseReason();
       subscriptions.delete(id);
       if (viewCheck !== null) clearInterval(viewCheck);
+      if (!isPassiveTerminalClose(closeReason)) {
+        const message = terminalCloseMessage(event.code, event.reason);
+        void markInteractiveTerminalDetached(env, user, id, Date.now(), message);
+      }
       if (client.readyState === WebSocket.OPEN) {
         sendTerminalJson(client, TerminalMessageType.Event, id, {
           type: "closed",
           code: event.code,
-          reason: event.reason,
+          reason: closeReason || event.reason,
         });
       }
     });
     upstream.addEventListener("error", () => {
+      const closeReason = closingReason;
       subscriptions.delete(id);
       if (viewCheck !== null) clearInterval(viewCheck);
-      sendTerminalJson(client, TerminalMessageType.Error, id, { error: "upstream terminal error" });
+      const message = "terminal unavailable: upstream terminal error";
+      if (!isPassiveTerminalClose(closeReason)) {
+        void markInteractiveTerminalUnavailable(env, user, id, Date.now(), message);
+        sendTerminalJson(client, TerminalMessageType.Error, id, { error: message });
+      }
     });
     void upstreamConnection.markConnected().catch(() => {
       sendTerminalJson(client, TerminalMessageType.Event, id, {
@@ -1792,7 +1834,7 @@ async function subscribeTerminalHubSession(
     });
   } catch (error) {
     sendTerminalJson(client, TerminalMessageType.Error, id, {
-      error: error instanceof Error ? clean(error.message, 200) : "terminal connection failed",
+      error: error instanceof Error ? clean(error.message, 180) : "terminal subscription failed",
     });
   }
 }
@@ -1861,18 +1903,81 @@ async function markInteractiveTerminalConnected(
   now: number,
   message: string,
 ): Promise<void> {
+  const previous = await database(env)
+    .selectFrom("interactive_sessions")
+    .select(["status", "last_event", "last_seen_at"])
+    .where("id", "=", id)
+    .executeTakeFirst();
   await database(env)
     .updateTable("interactive_sessions")
     .set({
       status: "attached",
       last_seen_at: now,
-      updated_at: now,
       last_event: message,
     })
     .where("id", "=", id)
     .where("status", "in", ["ready", "attached", "detached"])
     .execute();
-  if (user) await appendInteractiveSessionEvent(env, id, user, message, now);
+  if (
+    previous &&
+    (previous.status !== "attached" ||
+      previous.last_event !== message ||
+      now - previous.last_seen_at > 5 * 60_000)
+  ) {
+    await appendInteractiveSessionLog(env, id, user, message, now);
+  }
+}
+
+async function markInteractiveTerminalDetached(
+  env: RuntimeEnv,
+  user: User | null,
+  id: string,
+  now: number,
+  message: string,
+): Promise<void> {
+  const existing = await database(env)
+    .selectFrom("interactive_sessions")
+    .select("status")
+    .where("id", "=", id)
+    .executeTakeFirst();
+  if (!existing || ["expired", "failed", "stopped"].includes(existing.status)) return;
+  await database(env)
+    .updateTable("interactive_sessions")
+    .set({
+      status: "detached",
+      last_event: message,
+    })
+    .where("id", "=", id)
+    .where("status", "in", ["ready", "attached", "detached"])
+    .execute();
+  await appendInteractiveSessionLog(env, id, user, message, now);
+}
+
+async function markInteractiveTerminalUnavailable(
+  env: RuntimeEnv,
+  user: User | null,
+  id: string,
+  now: number,
+  message: string,
+): Promise<void> {
+  const existing = await database(env)
+    .selectFrom("interactive_sessions")
+    .select("status")
+    .where("id", "=", id)
+    .executeTakeFirst();
+  if (!existing || ["expired", "failed", "stopped"].includes(existing.status)) return;
+  await database(env)
+    .updateTable("interactive_sessions")
+    .set({
+      status: "expired",
+      updated_at: now,
+      stopped_at: now,
+      last_event: message,
+    })
+    .where("id", "=", id)
+    .where("status", "not in", ["expired", "failed", "stopped"])
+    .execute();
+  await appendInteractiveSessionLog(env, id, user, message, now);
 }
 
 async function uploadInteractiveSessionClipboard(
@@ -2110,39 +2215,35 @@ async function interactiveSandboxTerminal(
     session.leaseId?.slice(sandboxLeasePrefix.length) || sandboxIdForSession(session.id);
   const sandbox = getSandbox(env.SANDBOX, sandboxId);
   const terminalSession = await sandbox.getSession(sandboxTerminalSessionId(session.id));
-  const now = Date.now();
-  await database(env)
-    .updateTable("interactive_sessions")
-    .set({
-      status:
-        session.status === "ready" || session.status === "detached" ? "attached" : session.status,
-      last_seen_at: now,
-      updated_at: now,
-      last_event: "Cloudflare Sandbox terminal connected",
-    })
-    .where("id", "=", session.id)
-    .where("status", "!=", "stopped")
-    .execute();
-  await appendInteractiveSessionEvent(
-    env,
-    session.id,
-    user,
-    "Cloudflare Sandbox terminal connected",
-    now,
-  );
   const upstreamResponse = await terminalSession.terminal(request, {
     cols: terminalSize(request, "cols", 120),
     rows: terminalSize(request, "rows", 34),
     shell: sandboxStartupScriptPath(session),
   });
   const upstream = upstreamResponse.webSocket;
-  if (!upstream || upstreamResponse.status !== 101) return upstreamResponse;
+  if (!upstream || upstreamResponse.status !== 101) {
+    await markInteractiveTerminalUnavailable(
+      env,
+      user,
+      session.id,
+      Date.now(),
+      `terminal unavailable: Cloudflare Sandbox terminal HTTP ${upstreamResponse.status}`,
+    );
+    return upstreamResponse;
+  }
 
   const pair = new WebSocketPair();
   const client = pair[0];
   const server = pair[1];
   server.accept();
   upstream.accept();
+  await markInteractiveTerminalConnected(
+    env,
+    user,
+    session.id,
+    Date.now(),
+    "Cloudflare Sandbox terminal connected",
+  );
   bridgeWebSockets(server, upstream, canSendLeft);
   return new Response(null, { status: 101, webSocket: client });
 }
@@ -3627,6 +3728,28 @@ async function appendInteractiveSessionEvent(
     .execute();
 }
 
+async function appendInteractiveSessionLog(
+  env: RuntimeEnv,
+  id: string,
+  user: User | null,
+  message: string,
+  now = Date.now(),
+): Promise<void> {
+  if (user) {
+    await appendInteractiveSessionEvent(env, id, user, message, now);
+    return;
+  }
+  await database(env)
+    .insertInto("interactive_session_events")
+    .values({
+      session_id: id,
+      actor: "system",
+      message: clean(message, 1000),
+      created_at: now,
+    })
+    .execute();
+}
+
 async function readSettings(env: RuntimeEnv): Promise<Record<string, string>> {
   const rows = await database(env).selectFrom("settings").select(["key", "value"]).execute();
   return Object.fromEntries(rows.map((row) => [row.key, row.value]));
@@ -4531,6 +4654,17 @@ function terminalSize(request: Request, name: "cols" | "rows", fallback: number)
 function terminalDimension(value: number | null, fallback: number): number {
   if (!Number.isFinite(value ?? Number.NaN)) return fallback;
   return Math.min(300, Math.max(10, Math.trunc(value as number)));
+}
+
+function terminalCloseMessage(code: number, reason: string): string {
+  const suffix = reason ? `: ${clean(reason, 120)}` : "";
+  return `PTY detached ${code || 1000}${suffix}`;
+}
+
+function isPassiveTerminalClose(reason: string | undefined): boolean {
+  return (
+    reason === "unsubscribed" || reason === "client closed" || reason === "no terminals mounted"
+  );
 }
 
 function shellQuote(value: string): string {

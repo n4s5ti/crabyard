@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Stop dead Codex PTYs from auto-retrying forever and keep passive terminal reconnects from reordering the session grid.
 - Rewrite the Codex session grid with fixed non-overlapping terminal tiles and lazy offscreen terminal mounting.
 - Stabilize Codex session grid headers so live status and controls no longer flicker or shift during scrolling.
 - Add a GitHub Actions Worker deploy workflow for automatic Cloudflare deploys on `main` pushes.
