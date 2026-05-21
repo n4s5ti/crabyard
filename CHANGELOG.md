@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Hide Chrome's native contenteditable caret inside Ghostty session tiles.
 - Add persistent new Codex session actions to the sessions grid empty state and toolbar.
 - Keep inactive card runs out of the Codex session grid after dead session cleanup.
 - Add dead Codex session cleanup actions and suppress redundant `main` labels in session tiles.
