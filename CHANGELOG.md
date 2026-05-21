@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Clean up the Codex session grid columns control so it no longer looks like nested buttons.
 - Stop Codex session terminals from stealing grid scroll position while tiles mount or reconnect.
 - Make `/sessions` the Codex session grid route and reduce each session tile to maximize, share, and confirmed close actions.
 - Stop dead Codex PTYs from auto-retrying forever and keep passive terminal reconnects from reordering the session grid.

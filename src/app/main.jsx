@@ -1331,8 +1331,8 @@ function SessionsDrawer(props) {
 function SessionTools({ focused, sessionLayout, setSessionLayout, closeDrawer, showSessionGrid }) {
   return (
     <div class="session-tools">
-      <label>
-        Columns
+      <label class="session-columns-field">
+        <span>Columns</span>
         <select
           value={focused ? "1" : sessionLayout.columns}
           disabled={focused}
