@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Make `/sessions` the Codex session grid route and reduce each session tile to maximize, share, and confirmed close actions.
 - Stop dead Codex PTYs from auto-retrying forever and keep passive terminal reconnects from reordering the session grid.
 - Rewrite the Codex session grid with fixed non-overlapping terminal tiles and lazy offscreen terminal mounting.
 - Stabilize Codex session grid headers so live status and controls no longer flicker or shift during scrolling.

@@ -676,6 +676,9 @@ export default {
         url.pathname === "/" ||
         url.pathname === "/app" ||
         url.pathname === "/app/" ||
+        url.pathname === "/sessions" ||
+        url.pathname === "/sessions/" ||
+        url.pathname.startsWith("/sessions/") ||
         url.pathname.startsWith("/app/sessions/")
       ) {
         return text(APP_HTML, "text/html; charset=utf-8", { vary: "Accept" });
@@ -4300,7 +4303,7 @@ function shareToken(): string {
 
 function shareUrl(request: Request, id: string, token: string): string {
   const url = new URL(request.url);
-  return `${url.origin}/app/sessions/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`;
+  return `${url.origin}/sessions/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`;
 }
 
 function repoWorkflow(row: RepoWorkflowTable): RepoWorkflow {

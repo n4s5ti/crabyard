@@ -908,14 +908,12 @@
       }
       .session-cell-head {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        grid-template-areas:
-          "title status"
-          "controls controls";
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-areas: "title status controls";
         column-gap: 10px;
-        row-gap: 8px;
+        row-gap: 6px;
         align-items: center;
-        min-height: 88px;
+        min-height: 72px;
         padding: 10px 12px;
         border-bottom: 1px solid var(--line);
         background: var(--panel);
@@ -981,8 +979,8 @@
         max-width: 100%;
         display: flex;
         gap: 6px;
-        flex-wrap: wrap;
-        justify-content: flex-start;
+        flex-wrap: nowrap;
+        justify-content: flex-end;
         pointer-events: auto;
       }
       .session-edit-controls {
@@ -993,6 +991,7 @@
         padding: 0 9px;
         font-size: 12px;
         font-weight: 700;
+        white-space: nowrap;
       }
       .session-controls button:hover {
         transform: none;
@@ -1314,6 +1313,16 @@
         }
         .session-cell {
           min-height: 0;
+        }
+        .session-cell-head {
+          grid-template-columns: minmax(0, 1fr) auto;
+          grid-template-areas:
+            "title status"
+            "controls controls";
+        }
+        .session-controls {
+          justify-content: flex-start;
+          flex-wrap: wrap;
         }
         .ref-preview {
           position: fixed;

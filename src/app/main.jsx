@@ -20,13 +20,10 @@ import {
 } from "./utils.js";
 import {
   configureTerminalHub,
-  copyTerminalSelection,
   disposeAllTerminals,
   disposeTerminal,
   disposeMissingTerminals,
   mountTerminal,
-  pasteClipboardFile,
-  pasteClipboardText,
   warmGhosttyModule,
 } from "./terminal.js";
 
@@ -55,7 +52,7 @@ function App() {
   const [loginMessage, setLoginMessage] = useState("");
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const [drawers, setDrawers] = useState({});
+  const [drawers, setDrawers] = useState(initialSessionLink.route ? { sessions: true } : {});
   const [activeRunId, setActiveRunId] = useState(null);
   const [focusedSessionId, setFocusedSessionId] = useState(initialSessionLink.id);
   const [sharedSessionId, setSharedSessionId] = useState(initialSessionLink.id);
@@ -353,7 +350,8 @@ function App() {
 
   function showSessionGrid() {
     setFocusedSessionId(null);
-    if (!sharedToken) setSessionUrl(null);
+    if (!sharedToken) setSessionUrl(null, { grid: true });
+    setDrawers((current) => ({ ...current, sessions: true }));
   }
 
   function openSessionGrid(id, options = {}) {
@@ -365,23 +363,24 @@ function App() {
       Boolean(targetId && sessionItemById.get(targetId)?.kind === "interactive");
     const urlSessionId =
       targetId && deepLink && !String(targetId).startsWith("LOCAL-") ? targetId : null;
-    if (urlSessionId || !sharedToken) setSessionUrl(urlSessionId);
+    if (urlSessionId) setSessionUrl(urlSessionId);
+    else if (!sharedToken) setSessionUrl(null, { grid: true });
     warmGhosttyModule();
     setDrawers((current) => ({ ...current, sessions: true }));
   }
 
-  function setSessionUrl(id) {
+  function setSessionUrl(id, options = {}) {
     if (!history.replaceState) return;
     if (id) {
       const url = new URL(location.href);
-      url.pathname = `/app/sessions/${encodeURIComponent(id)}`;
+      url.pathname = `/sessions/${encodeURIComponent(id)}`;
       url.search = "";
       if (sharedToken && id === sharedSessionId) url.searchParams.set("token", sharedToken);
       history.replaceState(null, "", url);
       return;
     }
     const url = new URL(location.href);
-    url.pathname = "/app";
+    url.pathname = options.grid ? "/sessions" : "/app";
     url.search = "";
     history.replaceState(null, "", url);
   }
@@ -443,6 +442,13 @@ function App() {
     if (action === "stop") return result;
     openSessionGrid(id, { deepLink: true });
     return result;
+  }
+
+  async function closeInteractiveSession(id) {
+    const session = findInteractiveSession(id);
+    const label = session ? `${session.repo} (${session.id})` : id;
+    if (!window.confirm(`End Codex session ${label}?`)) return null;
+    return interactiveSessionAction(id, "stop");
   }
 
   async function shareInteractiveSession(id) {
@@ -648,6 +654,7 @@ function App() {
     cardAction,
     attachCard,
     interactiveSessionAction,
+    closeInteractiveSession,
     shareInteractiveSession,
     openRunDetails,
     createRefCard,
@@ -1284,7 +1291,7 @@ function SessionsDrawer(props) {
         <div class="panel-head session-head">
           <div>
             <h2>Codex sessions</h2>
-            <p>Attach, watch, or take over live Codex CLI terminals.</p>
+            <p>Live Codex CLI terminals with shareable read access.</p>
           </div>
           <SessionTools focused={Boolean(focused)} {...props} />
         </div>
@@ -1375,6 +1382,8 @@ function SessionTools({ focused, sessionLayout, setSessionLayout, closeDrawer, s
 function SessionCell(props) {
   const session = props.session;
   const editable = props.sessionLayout.edit && !props.focused;
+  const branchLabel =
+    session.branch || (session.kind !== "interactive" && session.policy ? session.policy : "");
   return (
     <article
       class={`session-cell ${editable ? "layout-editing" : ""}`}
@@ -1416,27 +1425,22 @@ function SessionCell(props) {
     >
       <header class="session-cell-head">
         <div class="session-cell-title">
-          <strong title={session.title}>{session.repo}</strong>
-          <span title={session.branch || session.title}>
-            {session.branch || session.title}
-            {session.kind !== "interactive" && session.policy ? ` · ${session.policy}` : ""}
-          </span>
+          <strong>{session.repo}</strong>
+          {branchLabel ? <span>{branchLabel}</span> : null}
         </div>
         <SessionStatus session={session} />
         <div class="session-controls">
           {editable ? <SessionLayoutButtons session={session} {...props} /> : null}
-          {props.focused ? (
-            <button onClick={props.showSessionGrid}>Grid</button>
-          ) : (
+          {!props.focused && !editable ? (
             <button
               onClick={() => {
                 props.setFocusedSessionId(session.id);
                 props.openSessionGrid(session.id, { deepLink: session.kind === "interactive" });
               }}
             >
-              Open
+              Maximize
             </button>
-          )}
+          ) : null}
           <SessionActions session={session} minimal={!props.focused && !editable} {...props} />
         </div>
       </header>
@@ -1468,7 +1472,6 @@ function SessionActions(props) {
     return (
       <>
         <button onClick={() => props.openRunDetails(session.id)}>Details</button>
-        <button onClick={() => props.cardAction(session.id, "watch")}>Watch</button>
       </>
     );
   }
@@ -1488,25 +1491,20 @@ function InteractiveSessionActions(props) {
   if (String(session.id).startsWith("LOCAL-")) return null;
   const stopped = ["stopped", "expired", "failed"].includes(session.status);
   const canManage = session.canManage || canMaintain(props.state.user);
-  const canUse = session.canControl || canManage;
-  const filePaste =
-    canUse && typeof session.leaseId === "string" && session.leaseId.startsWith("sandbox:");
+  const shareAction = session.shareMode === "link_read" ? "disable_share" : "share_link";
+  const shareLabel = session.shareMode === "link_read" ? "Unshare" : "Share";
+  const handleShare = () => {
+    if (shareAction === "disable_share")
+      return props.interactiveSessionAction(session.id, shareAction);
+    return props.shareInteractiveSession(session.id);
+  };
   if (props.minimal) {
     return (
       <>
-        {canManage ? (
-          <button onClick={() => props.shareInteractiveSession(session.id)}>
-            {session.shareMode === "link_read" ? "New link" : "Share"}
-          </button>
-        ) : null}
-        {!stopped && canUse ? (
-          <button onClick={() => props.interactiveSessionAction(session.id, "attach")}>
-            Attach
-          </button>
-        ) : null}
+        {canManage ? <button onClick={handleShare}>{shareLabel}</button> : null}
         {canManage && !stopped ? (
-          <button class="danger" onClick={() => props.interactiveSessionAction(session.id, "stop")}>
-            Stop
+          <button class="danger" onClick={() => props.closeInteractiveSession(session.id)}>
+            Close
           </button>
         ) : null}
       </>
@@ -1514,23 +1512,7 @@ function InteractiveSessionActions(props) {
   }
   return (
     <>
-      <button onClick={() => copyTerminalSelection(session.id)}>Copy</button>
-      {!stopped && canUse ? (
-        <button onClick={() => pasteClipboardText(session.id)}>Paste</button>
-      ) : null}
-      {!stopped && filePaste ? (
-        <button onClick={() => pasteClipboardFile(session.id)}>Paste file</button>
-      ) : null}
-      {canManage ? (
-        <button onClick={() => props.shareInteractiveSession(session.id)}>
-          {session.shareMode === "link_read" ? "New link" : "Share"}
-        </button>
-      ) : null}
-      {canManage && session.shareMode === "link_read" ? (
-        <button onClick={() => props.interactiveSessionAction(session.id, "disable_share")}>
-          Unshare
-        </button>
-      ) : null}
+      {canManage ? <button onClick={handleShare}>{shareLabel}</button> : null}
       {session.canRequestControl && !session.sharedReadOnly && !stopped ? (
         <button onClick={() => props.interactiveSessionAction(session.id, "request_control")}>
           {session.controlRequestedBy ? "Control requested" : "Request control"}
@@ -1554,12 +1536,9 @@ function InteractiveSessionActions(props) {
           Revoke
         </button>
       ) : null}
-      {!stopped && canUse ? (
-        <button onClick={() => props.interactiveSessionAction(session.id, "attach")}>Attach</button>
-      ) : null}
       {canManage && !stopped ? (
-        <button class="danger" onClick={() => props.interactiveSessionAction(session.id, "stop")}>
-          Stop
+        <button class="danger" onClick={() => props.closeInteractiveSession(session.id)}>
+          Close
         </button>
       ) : null}
     </>
@@ -2016,9 +1995,10 @@ function normalizeSessionLayout(value) {
 }
 
 function parseSessionLink() {
-  const match = location.pathname.match(/^\/app\/sessions\/([^/]+)$/);
+  const match = location.pathname.match(/^\/(?:app\/)?sessions(?:\/([^/]+))?\/?$/);
   return {
-    id: match ? decodeURIComponent(match[1]) : null,
+    route: Boolean(match),
+    id: match?.[1] ? decodeURIComponent(match[1]) : null,
     token: new URLSearchParams(location.search).get("token"),
   };
 }
@@ -2028,7 +2008,12 @@ function restoreSessionReturnUrl() {
     const saved = sessionStorage.getItem(loginReturnKey);
     if (!saved || !history.replaceState) return;
     const url = new URL(saved, location.origin);
-    if (url.origin !== location.origin || !url.pathname.startsWith("/app/sessions/")) return;
+    const isSessionUrl =
+      url.pathname === "/sessions" ||
+      url.pathname === "/sessions/" ||
+      url.pathname.startsWith("/sessions/") ||
+      url.pathname.startsWith("/app/sessions/");
+    if (url.origin !== location.origin || !isSessionUrl) return;
     if (location.pathname !== "/app" && location.pathname !== "/app/") return;
     sessionStorage.removeItem(loginReturnKey);
     history.replaceState(null, "", `${url.pathname}${url.search}`);
