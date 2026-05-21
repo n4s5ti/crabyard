@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep inactive card runs out of the Codex session grid after dead session cleanup.
 - Add dead Codex session cleanup actions and suppress redundant `main` labels in session tiles.
 - Clean up the Codex session grid columns control so it no longer looks like nested buttons.
 - Stop Codex session terminals from stealing grid scroll position while tiles mount or reconnect.

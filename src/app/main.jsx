@@ -1307,10 +1307,12 @@ function RunSide({ card, state, cardAction }) {
 
 function SessionsDrawer(props) {
   const open = Boolean(props.drawers.sessions);
-  const focused = props.focusedSessionId ? props.sessionItemById.get(props.focusedSessionId) : null;
-  const sessions = focused
-    ? [focused]
-    : orderedSessionItems(props.allSessionItems, props.sessionLayout);
+  const focusedCandidate = props.focusedSessionId
+    ? props.sessionItemById.get(props.focusedSessionId)
+    : null;
+  const focused = focusedCandidate && isSessionGridItem(focusedCandidate) ? focusedCandidate : null;
+  const gridItems = props.allSessionItems.filter(isSessionGridItem);
+  const sessions = focused ? [focused] : orderedSessionItems(gridItems, props.sessionLayout);
   useEffect(() => {
     if (!open) return;
     disposeMissingTerminals(new Set(sessions.map((session) => session.id)));
@@ -1619,6 +1621,11 @@ function isDeadInteractiveSession(session) {
 
 function canCleanInteractiveSession(session, user) {
   return isDeadInteractiveSession(session) && (session.canManage || canMaintain(user));
+}
+
+function isSessionGridItem(session) {
+  if (session?.kind === "interactive") return true;
+  return session?.kind === "card" && isActiveRun(session);
 }
 
 function SessionStatus({ session }) {
