@@ -1318,7 +1318,11 @@ function SessionsDrawer(props) {
     disposeMissingTerminals(new Set(sessions.map((session) => session.id)));
   }, [open, sessions.map((session) => session.id).join("\0")]);
   return (
-    <div class={`drawer ${open ? "open" : ""}`} aria-hidden={open ? "false" : "true"}>
+    <div
+      class={`drawer ${open ? "open" : ""}`}
+      id="sessions-drawer"
+      aria-hidden={open ? "false" : "true"}
+    >
       <section class="panel session-panel">
         <div class="panel-head session-head">
           <div>
