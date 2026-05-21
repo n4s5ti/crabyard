@@ -76,7 +76,16 @@ export async function mountTerminal(session, mount, options = {}) {
     });
     const fit = module.FitAddon ? new module.FitAddon() : null;
     if (fit) term.loadAddon(fit);
+    const restoreOpenScroll = preserveScrollPosition(mount);
+    const previousActive = document.activeElement;
     term.open(mount);
+    if (!options.focused) releaseTerminalFocus(mount, previousActive);
+    restoreOpenScroll();
+    if (!options.focused)
+      requestAnimationFrame(() => {
+        releaseTerminalFocus(mount, previousActive);
+        restoreOpenScroll();
+      });
     if (fit) {
       fit.fit();
       if (typeof fit.observeResize === "function") fit.observeResize();
@@ -187,6 +196,8 @@ export function disposeAllTerminals() {
 export function disposeTerminal(id) {
   const host = terminalHosts.get(id);
   if (!host) return;
+  const restoreScroll = preserveScrollPosition(host.mount);
+  releaseTerminalFocus(host.mount);
   if (host.live && terminalHubSocket?.readyState === WebSocket.OPEN) {
     sendTerminalFrame(id, TerminalMessageType.Unsubscribe);
   }
@@ -205,6 +216,7 @@ export function disposeTerminal(id) {
       terminalHubSocket.close(1000, "no terminals mounted");
     }
   }
+  restoreScroll();
 }
 
 function shouldConnectLiveTerminal(session) {
@@ -503,24 +515,38 @@ function terminalConnectedLabel(host) {
   return host?.canInput ? "Live PTY" : "Read-only PTY";
 }
 
-function focusTerminalWithoutScroll(host) {
-  const scrollRoot = host.mount?.closest(".panel-body");
+function releaseTerminalFocus(mount, fallback) {
+  if (!mount?.contains?.(document.activeElement)) return;
+  try {
+    document.activeElement?.blur?.();
+    if (fallback && fallback !== document.body && !mount.contains(fallback)) {
+      fallback.focus?.({ preventScroll: true });
+    }
+  } catch {}
+}
+
+function preserveScrollPosition(mount) {
+  const scrollRoot = mount?.closest?.(".panel-body");
   const windowX = window.scrollX;
   const windowY = window.scrollY;
   const rootTop = scrollRoot?.scrollTop;
   const rootLeft = scrollRoot?.scrollLeft;
+  return () => {
+    if (scrollRoot && rootTop !== undefined && rootLeft !== undefined) {
+      scrollRoot.scrollTop = rootTop;
+      scrollRoot.scrollLeft = rootLeft;
+    }
+    window.scrollTo(windowX, windowY);
+  };
+}
+
+function focusTerminalWithoutScroll(host) {
+  const restoreScroll = preserveScrollPosition(host.mount);
   try {
     host.term?.focus?.();
   } catch {}
-  if (scrollRoot && rootTop !== undefined && rootLeft !== undefined) {
-    scrollRoot.scrollTop = rootTop;
-    scrollRoot.scrollLeft = rootLeft;
-    requestAnimationFrame(() => {
-      scrollRoot.scrollTop = rootTop;
-      scrollRoot.scrollLeft = rootLeft;
-    });
-  }
-  window.scrollTo(windowX, windowY);
+  restoreScroll();
+  requestAnimationFrame(restoreScroll);
 }
 
 function sendTerminalInput(host, data) {
